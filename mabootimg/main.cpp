@@ -1,4 +1,4 @@
-#define GVATC_TOOL_NAME "abootimgm"
+#define GVATC_TOOL_NAME "mabootimg"
 #define GVATC_VERSION "2025.11.09"
 
 #include <fstream>

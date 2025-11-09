@@ -6,10 +6,10 @@ add_compile_options(-Wall -Wextra) # -Werror in stable branch
 
 include(GNUInstallDirs)
 
-file(GLOB abootimgm abootimgm/*)
-add_executable(abootimgm ${abootimgm})
+file(GLOB mabootimg mabootimg/*)
+add_executable(mabootimg ${mabootimg})
 
-install(TARGETS abootimgm
+install(TARGETS mabootimg
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
         ARCHIVE DESTINATION lib)
