@@ -1,7 +1,6 @@
 #define GVATC_TOOL_NAME "abootimgm"
 #define GVATC_VERSION "2025.11.09"
 
-#include <complex>
 #include <fstream>
 #include "argparse/argparse.hpp"
 #include "termcolor/termcolor.hpp"
