@@ -1,12 +1,13 @@
 #define GVATC_TOOL_NAME "abootimgm"
 #define GVATC_VERSION "2025.11.09"
 
+#include <complex>
 #include <fstream>
 #include "argparse/argparse.hpp"
 #include "termcolor/termcolor.hpp"
 #include "bootimg.h"
 
-using std::cout,std::cerr,std::endl,std::string,std::exception,std::function,
+using std::cout,std::cerr,std::endl,std::string,std::to_string,std::exception,std::function,
       std::ifstream,std::ofstream,std::ios,std::streamsize,std::filesystem::exists,std::filesystem::file_size,
       std::array,std::vector,std::pair,std::ranges::find,std::ranges::fill_n,std::ranges::copy_n,std::ranges::size,
       termcolor::bright_red,termcolor::reset,
@@ -18,13 +19,13 @@ constexpr array<int,4> page_sizes = {2048,4096,8192,16384}; // default: 4096
 
      string action;         int header_version,        page_size;
 vector<int>os_version_,os_patch_level_;
-string     name,         cmdline,       extra_cmdline,      vendor_cmdline,
-           kernel_path,  ramdisk_path,  dtb_path,           vendor_ramdisk_path,
-           boot_output_path, vendor_boot_output_path;
-char       *kernel_data, *ramdisk_data, *dtb_data,          *vendor_ramdisk_data;
-unsigned   kernel_addr,  ramdisk_addr,  dtb_addr,           vendor_ramdisk_addr,  tags_addr, os_version;
-streamsize kernel_size,  ramdisk_size,  dtb_size,           vendor_ramdisk_size;
-long       name_size,    cmdline_size,  extra_cmdline_size, vendor_cmdline_size;
+string              name,         cmdline,       extra_cmdline,      vendor_cmdline,
+                    kernel_path,  ramdisk_path,  dtb_path,           vendor_ramdisk_path,
+                    boot_output_path, vendor_boot_output_path;
+char                *kernel_data, *ramdisk_data, *dtb_data,          *vendor_ramdisk_data;
+unsigned            kernel_addr,  ramdisk_addr,  dtb_addr,           vendor_ramdisk_addr,  tags_addr, os_version;
+streamsize          kernel_size,  ramdisk_size,  dtb_size,           vendor_ramdisk_size;
+unsigned long       name_size,    cmdline_size,  extra_cmdline_size, vendor_cmdline_size;
 constexpr uint32_t reserved[4] = {0,0,0,0}; // unknown field in 3 header structure
 constexpr int v34_boot_cmdline_size = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
 pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
@@ -38,11 +39,18 @@ namespace print {
     }
 }
 
+unsigned get_page_size_of_image(const unsigned &image_size) {
+    return (image_size + page_size - 1) / page_size;
+}
+
 void get_file_size(const string &path,streamsize &siz) {
     siz = file_size(path);
     if (siz == 0) {
         print::cer("This file is empty.");
         exit(1);
+    } else {
+        print::cou("Page size: \r");
+        cout << to_string(siz).c_str();
     }
 }
 
@@ -51,19 +59,14 @@ void set_os_version(const unsigned &major,const unsigned &minor,const unsigned &
     os_version |= (((major & 0x7f) << 25) | ((minor & 0x7f) << 18) | ((patch & 0x7f) << 11));
 }
 
-void set_os_patch_level(unsigned &year,unsigned &month) { // changed SetOsPatchLevel
-    year -= 2000;
-    if (year < 0) year = 0;
-
+void set_os_patch_level(const unsigned &year,const unsigned &month) { // changed SetOsPatchLevel
     if (month > 12) {
         print::cer("Invalid month");
         exit(1);
-    } else if (month < 0) {
-        month = 0;
     }
 
     os_version &= ~((1 << 11) - 1);
-    os_version |= ((year & 0x7f) << 4) | ((month & 0xf) << 0);
+    os_version |= ((year - 2000 & 0x7f) << 4) | ((month & 0xf) << 0);
 }
 
 namespace hdr {
@@ -120,9 +123,23 @@ namespace hdr {
 
         os_version_  = args.get<vector<int>>("--os-version");
         os_patch_level_ = args.get<vector<int>>("--os-patch-level");
+        os_version = 0;
+        set_os_version(os_version_[0],os_version_[1],os_version_[2]);
+        set_os_patch_level(os_patch_level_[0],os_patch_level_[1]);
+
+        name = args.get<string>("--name");
+        name_size = name.size();
+
+        cmdline = args.get<string>("--cmdline");
+        cmdline_size = cmdline.size();
+    }
+    void xtr_cmdln(const ArgumentParser &args) {
+        extra_cmdline = args.get("--extra-cmdline");
+        extra_cmdline_size = extra_cmdline.size();
     }
     void cv0(const ArgumentParser &args) {
         bt_chck(args);
+        xtr_cmdln(args);
         //second_path =
     }
     void whdr(ofstream &writable) {
@@ -267,11 +284,11 @@ namespace hdr {
         writable.write(vendor_boot_img_hdr.first,vendor_boot_img_hdr.second);
     }
     void wv3(ofstream &writable) {
-        wvhdr(writable);
+        whdr(writable);
         wbase(writable);
 
         ofstream vendor_boot(vendor_boot_output_path,ios::binary);
-        vendor_boot.write(vendor_boot_img_hdr.first,vendor_boot_img_hdr.second);
+        wvhdr(vendor_boot);
         vendor_boot.write(vendor_ramdisk_data,vendor_ramdisk_size);
         vendor_boot.write(dtb_data,dtb_size);
         vendor_boot.close();
@@ -450,10 +467,10 @@ int main(const int argc, const char **argv) {
             ofstream boot(boot_output_path,ios::binary);
             wrthdrs[header_version](boot);
 
+            print::cou("Successfully created bootable.");
         }
     } catch (const exception &err) {
         print::cer(err.what());
-        cout << reset << parser;
     }
 
     return 0;
