@@ -8,7 +8,7 @@
 
 using std::cout,std::cerr,std::endl,std::string,std::exception,std::function,
       std::ifstream,std::ofstream,std::ios,std::streamsize,std::filesystem::exists,std::filesystem::file_size,
-      std::array,std::vector,std::pair,std::ranges::find,std::ranges::fill_n,std::ranges::copy_n,
+      std::array,std::vector,std::pair,std::ranges::find,std::ranges::fill_n,std::ranges::copy_n,std::ranges::size,
       termcolor::bright_red,termcolor::reset,
       argparse::ArgumentParser;
 
@@ -38,9 +38,9 @@ namespace print {
     }
 }
 
-void get_file_size(const string &path,streamsize &size) {
-    size = file_size(path);
-    if (size == 0) {
+void get_file_size(const string &path,streamsize &siz) {
+    siz = file_size(path);
+    if (siz == 0) {
         print::cer("This file is empty.");
         exit(1);
     }
@@ -305,7 +305,7 @@ namespace hdr {
         boot_img_hdr.ramdisk_size = ramdisk_size;
         boot_img_hdr.os_version = os_version;
         // header_size
-        copy_n(reserved,sizeof(reserved),boot_img_hdr.reserved);
+        copy_n(reserved,size(reserved),boot_img_hdr.reserved);
         boot_img_hdr.header_version = header_version;
         fill_n(boot_img_hdr.cmdline, v34_boot_cmdline_size, 0);
         copy_n(cmdline.c_str(), cmdline_size, boot_img_hdr.cmdline);
@@ -414,7 +414,7 @@ int main(const int argc, const char **argv) {
     .metavar("<(vendor_)boot.img>")
     .default_value("");
     parser.add_argument("-u","--unpack")
-    .help("[inspect] Give kernel and ramdisk or dtb and vendor ramdisk files after giving information")
+    .help("[inspect] Give kernel and ramdisk or DTB and vendor ramdisk files after giving information")
     .flag();
     parser.add_argument("--unpack-dir")
     .help("[inspect, unpack] Path to output directory of files of bootable")
