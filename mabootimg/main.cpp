@@ -382,9 +382,9 @@ array<function<void(ArgumentParser &)>,4> chckhdrs = {hdr::cv0,hdr::cv1,hdr::cv2
 
 int main(const int argc, const char **argv) {
     ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
-    parser.add_description("abootimgm (Android'bootimg'Manipulator) - Tool to create and unpack Android bootable images "
-                           "'boot' and 'vendor_boot' depending on specified header version.");
-    parser.add_epilog("The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC\nNon-commercial use only!");
+    parser.add_description(GVATC_TOOL_NAME" (Manipulate Android 'bootimg') - The lightweight and fast tool to manipulate Android bootable images.");
+    parser.add_epilog("Tool to create Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
+                        "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
     parser.add_argument("-a","--action")
     .help("Specify the action to do with Android 'boot'")
@@ -483,7 +483,11 @@ int main(const int argc, const char **argv) {
     .metavar("<out>")
     .default_value("");
 
-    parser.parse_args(argc,argv);
+    try { parser.parse_args(argc,argv); }
+    catch (const exception &err) {
+        print::cer(err.what());
+        return 1;
+    }
 
     action = parser.get("--action");
     if (action.starts_with("i")) {
