@@ -18,13 +18,13 @@ constexpr array<int,4> page_sizes = {2048,4096,8192,16384}; // default: 4096
 
      string action;         int header_version,        page_size;
 vector<int>os_version_,os_patch_level_;
-string              name,         cmdline,       extra_cmdline,      vendor_cmdline,
-                    kernel_path,  ramdisk_path,  dtb_path,           vendor_ramdisk_path,
-                    boot_output_path, vendor_boot_output_path;
-char                *kernel_data, *ramdisk_data, *dtb_data,          *vendor_ramdisk_data;
-unsigned            kernel_addr,  ramdisk_addr,  dtb_addr,           vendor_ramdisk_addr,  tags_addr, os_version;
-streamsize          kernel_size,  ramdisk_size,  dtb_size,           vendor_ramdisk_size;
-unsigned long       name_size,    cmdline_size,  extra_cmdline_size, vendor_cmdline_size;
+string      name,         cmdline,       extra_cmdline,      vendor_cmdline,
+            kernel_path,  ramdisk_path,  dtb_path,           vendor_ramdisk_path,
+            boot_output_path, vendor_boot_output_path;
+char        *kernel_data, *ramdisk_data, *dtb_data,          *vendor_ramdisk_data;
+unsigned    kernel_addr,  ramdisk_addr,  dtb_addr,           vendor_ramdisk_addr,  tags_addr, os_version,
+            name_size,    cmdline_size,  extra_cmdline_size, vendor_cmdline_size;
+streamsize  kernel_size,  ramdisk_size,  dtb_size,           vendor_ramdisk_size;
 constexpr uint32_t reserved[4] = {0,0,0,0}; // unknown field in 3 header structure
 constexpr int v34_boot_cmdline_size = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
 pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
@@ -42,14 +42,17 @@ unsigned get_page_size_of_image(const unsigned &image_size) {
     return (image_size + page_size - 1) / page_size;
 }
 
+void set_addr(const string &addr_str,unsigned &addr) {
+    addr = stoi(addr_str);
+}
+
 void get_file_size(const string &path,streamsize &siz) {
     siz = file_size(path);
     if (siz == 0) {
         print::cer("This file is empty.");
         exit(1);
     } else {
-        print::cou("Page size: \r");
-        cout << to_string(siz).c_str();
+        //cout << to_string(get_page_size_of_image(siz)).c_str();
     }
 }
 
@@ -101,9 +104,8 @@ namespace hdr {
             if (ifstream kernel(kernel_path,ios::binary); !kernel.read(kernel_data,kernel_size)) {
                 print::cer("Failed to read this kernel file.");
                 exit(1);
-            }
+            } else set_addr(args.get<string>("--kernel-addr"), kernel_addr);
         }
-        kernel_addr = args.get<unsigned>("--kernel-addr");
 
         ramdisk_path = args.get<string>("--ramdisk");
         if (ramdisk_path.empty()) {
@@ -116,9 +118,8 @@ namespace hdr {
             if (ifstream ramdisk(ramdisk_path,ios::binary); !ramdisk.read(ramdisk_data,ramdisk_size)) {
                 print::cer("Failed to read this ramdisk file.");
                 exit(1);
-            }
+            } else set_addr(args.get<string>("--ramdisk-addr"),ramdisk_addr);
         }
-        ramdisk_addr = args.get<unsigned>("--ramdisk-addr");
 
         os_version_  = args.get<vector<int>>("--os-version");
         os_patch_level_ = args.get<vector<int>>("--os-patch-level");
@@ -131,6 +132,8 @@ namespace hdr {
 
         cmdline = args.get<string>("--cmdline");
         cmdline_size = cmdline.size();
+
+        set_addr(args.get<string>("--tags-addr"),tags_addr);
     }
     void xtr_cmdln(const ArgumentParser &args) {
         extra_cmdline = args.get("--extra-cmdline");
@@ -222,7 +225,7 @@ namespace hdr {
             if (ifstream dtb(dtb_path,ios::binary); !dtb.read(dtb_data,dtb_size)) {
                 print::cer("Failed to read DTB file.");
                 exit(1);
-            }
+            } else set_addr(args.get<string>("--dtb-addr"),dtb_addr);
         }
     }
     void cv2(const ArgumentParser &args) {
@@ -373,23 +376,23 @@ int main(const int argc, const char **argv) {
     parser.add_argument("-K","--kernel-addr")
     .help("[create] Set hexadecimal number of address of kernel image")
     .metavar("<0x0>")
-    .scan<'x',unsigned>()
-    .default_value(0x0);
+    //.scan<'x',unsigned>()
+    .default_value("0x0");
     parser.add_argument("-R","--ramdisk-addr")
     .help("[create] Set hexadecimal number of address of initial RAM disk(s) image(s)")
     .metavar("<0x0>")
-    .scan<'x',unsigned>()
-    .default_value(0x0);
+    //.scan<'x',unsigned long>()
+    .default_value("0x0");
     parser.add_argument("-D","--dtb-addr")
     .help("[create] Set hexadecimal number of address of DTB image")
     .metavar("<0x0>")
-    .scan<'x',unsigned>()
-    .default_value(0x0);
+    //.scan<'x',unsigned long>()
+    .default_value("0x0");
     parser.add_argument("-t","--tags-addr")
     .help("[create] Set hexadecimal number of kernel's tags if needed")
     .metavar("<0x0>")
-    .scan<'x',unsigned>()
-    .default_value(0x0);
+    //.scan<'x',unsigned long>()
+    .default_value("0x0");
     parser.add_argument("-n","--name")
     .help("[create] Set name of (board) product in bootable")
     .metavar("<Redmi 5>")
