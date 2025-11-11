@@ -4,11 +4,10 @@ project(GVATC)
 
 add_compile_options(-Wall -Wextra) # -Werror in stable branch
 
-include(GNUInstallDirs)
-
 file(GLOB mabootimg mabootimg/*)
 add_executable(mabootimg ${mabootimg})
 
+include(GNUInstallDirs)
 install(TARGETS mabootimg
         RUNTIME DESTINATION bin
         LIBRARY DESTINATION lib
