@@ -1,5 +1,5 @@
 #define GVATC_TOOL_NAME "mabootimg"
-#define GVATC_VERSION "2025.11.09"
+#define GVATC_VERSION "2025.11.11"
 
 #include <fstream>
 #include <cstring>
@@ -14,20 +14,22 @@ using std::cout,std::cerr,std::endl,std::string,std::to_string,std::exception,st
       argparse::ArgumentParser;
 
 constexpr char GVATC_TOOL_PRINT_PREFIX[24] = " [GVATC/" GVATC_TOOL_NAME "]: |> ";
-constexpr array<int,4> header_versions = {0,1,2,3,};
-constexpr array<int,4> page_sizes = {2048,4096,8192,16384}; // default: 4096
+constexpr array<unsigned,4> header_versions = {0,1,2,3,};
+constexpr array<unsigned,4> page_sizes = {2048,4096,8192,16384}; // default: 4096
+array<unsigned,4>::const_iterator hdr_chck, pgs_chck;
+string                            hdr_chck2;
 
-     string action;         int header_version,        page_size;
-vector<unsigned> os_version_, os_patch_level_;
-string         name,         cmdline,       extra_cmdline,      vendor_cmdline,
-               kernel_path,  ramdisk_path,  dtb_path,           vendor_ramdisk_path,
+string action;
+unsigned       header_version,   page_size,               os_version;
+string         name,             cmdline,                 extra_cmdline,      vendor_cmdline,
+               kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path,
                boot_output_path, vendor_boot_output_path;
-char           *kernel_data, *ramdisk_data, *dtb_data,          *vendor_ramdisk_data;
-unsigned long  kernel_addr,  ramdisk_addr,  dtb_addr,           /*  ramdisk addr   ,*/  tags_addr, os_version;
-size_t         name_size,    cmdline_size,  extra_cmdline_size, vendor_cmdline_size;
-streamsize     kernel_size,  ramdisk_size,  dtb_size,           vendor_ramdisk_size;
-constexpr uint32_t reserved[4]{}; // unknown field in 3 header structure
-constexpr int v34_boot_cmdline_size = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
+char           *kernel_data,     *ramdisk_data,           *dtb_data,          *vendor_ramdisk_data;
+unsigned long  kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr;
+size_t         name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size;
+streamsize     kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size;
+vector<unsigned>   os_version_,  os_patch_level_;
+constexpr unsigned v34_boot_cmdline_size = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
 pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
 
 namespace print {
@@ -63,13 +65,13 @@ void set_os_version(const unsigned &major,const unsigned &minor,const unsigned &
 }
 
 void set_os_patch_level(unsigned &year,const unsigned &month) { // changed SetOsPatchLevel
-    if (month > 12) {
+    if (year < 2000 && month > 0) {
+        print::cou("Note that OS patch level will not be specified because your year is smaller than 2000.");
+        year = 0;
+    } else if (month > 12) {
         print::cer("Invalid month");
         exit(1);
-    }
-
-    year -= 2000;
-    if (year < 0) year = 0;
+    } else year -= 2000;
 
     os_version &= ~((1 << 11) - 1);
     os_version |= ((year & 0x7f) << 4) | ((month & 0xf) << 0);
@@ -77,24 +79,22 @@ void set_os_patch_level(unsigned &year,const unsigned &month) { // changed SetOs
 
 namespace hdr {
     void bt_chck(const ArgumentParser &args) {
-        boot_output_path = args.get<string>("--boot-output");
-        if (boot_output_path.empty()) {
-            print::cer("'boot' file output path must be specified.");
+        hdr_chck2 = args.get<string>("--header-version");
+        if (hdr_chck2.empty()) {
+            print::cer("Please, specify header version.");
             exit(1);
         }
-
-        page_size = args.get<int>("--page-size");
-        if (page_size == -1) {
-            print::cer("Please, specify the page size.");
+        if (hdr_chck = header_versions.end();
+            find(header_versions.begin(), hdr_chck, stoi(hdr_chck2)) == hdr_chck) {
+            print::cer("Invalid header version. Only 0, 1, 2, 3 and 4 are available.");
             exit(1);
-        } else {
-            if (header_version < 3) {
-                if (array<int,4>::const_iterator __page_sizes_end = page_sizes.end();
-                    find(page_sizes.begin(), __page_sizes_end, page_size) == __page_sizes_end) {
-                    print::cer("Unsupported or invalid page size.");
-                    exit(1);
-                }
             }
+
+        page_size = args.get<unsigned>("--page-size");
+        if (pgs_chck = page_sizes.end();
+            find(page_sizes.begin(),pgs_chck,page_size) == pgs_chck) {
+            print::cer("Invalid or unsupported page size. Only 2048, 4096, 8192, 16384 are available.");
+            exit(1);
         }
 
         kernel_path = args.get<string>("--kernel");
@@ -125,6 +125,12 @@ namespace hdr {
             } else set_addr(args.get<string>("--ramdisk-addr"),ramdisk_addr);
         }
 
+        boot_output_path = args.get<string>("--boot-output");
+        if (boot_output_path.empty()) {
+            print::cer("'boot' file output path must be specified.");
+            exit(1);
+        }
+
         print::cou("Calculating OS version value...");
         os_version_  = args.get<vector<unsigned>>("--os-version");
         os_patch_level_ = args.get<vector<unsigned>>("--os-patch-level");
@@ -139,13 +145,12 @@ namespace hdr {
             exit(1);
         }
 
-
         cmdline = args.get<string>("--cmdline");
         cmdline_size = cmdline.size();
         if (header_version < 3 && cmdline_size > BOOT_ARGS_SIZE) {
             print::cer("Length of command line before 3 hdr cannot be bigger than 512 chars.");
             exit(1);
-        } else if (header_version >= 3 && cmdline_size > BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE) {
+        } else if (header_version >= 3 && cmdline_size > v34_boot_cmdline_size) {
             print::cer("Length of command line in 3+ hdr cannot be bigger than 1536 chars.");
             exit(1);
         }
@@ -393,12 +398,11 @@ int main(const int argc, const char **argv) {
     parser.add_argument("-H","--header-version")
     .help("[create] Specify the header version of Android 'boot'")
     .metavar("<0/1/2/3/4>")
-    .scan<'i',int>()
-    .default_value(-1);
+    .default_value("");
     parser.add_argument("-p","--page-size")
     .help("[create] Specify the page size of Android 'boot'")
     .metavar("<2048/4096/8192/16384>")
-    .scan<'i',int>()
+    .scan<'i',unsigned>()
     .default_value(page_sizes[1]);
     parser.add_argument("-k","--kernel")
     .help("[create] Add kernel (ACK/Linux) to Android 'boot'")
@@ -495,16 +499,6 @@ int main(const int argc, const char **argv) {
         print::cou("introspection");
         //
     }else if (action.starts_with("c")) {
-        header_version = parser.get<int>("--header-version");
-        if (header_version == -1) {
-            print::cer("Please, specify the header version of bootable to create.");
-            return 1;
-        } else if (array<int,4>::const_iterator __header_versions_end = header_versions.end();
-                   find(header_versions.begin(), __header_versions_end, header_version) == __header_versions_end) {
-            print::cer("Invalid header version. Only 0, 1, 2, 3 and 4 are available.");
-            return 1;
-                   }
-
         print::cou("Checking arguments...");
         chckhdrs[header_version](parser);
 
