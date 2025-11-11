@@ -79,17 +79,6 @@ void set_os_patch_level(unsigned &year,const unsigned &month) { // changed SetOs
 
 namespace hdr {
     void bt_chck(const ArgumentParser &args) {
-        hdr_chck2 = args.get<string>("--header-version");
-        if (hdr_chck2.empty()) {
-            print::cer("Please, specify header version.");
-            exit(1);
-        }
-        if (hdr_chck = header_versions.end();
-            find(header_versions.begin(), hdr_chck, stoi(hdr_chck2)) == hdr_chck) {
-            print::cer("Invalid header version. Only 0, 1, 2, 3 and 4 are available.");
-            exit(1);
-            }
-
         page_size = args.get<unsigned>("--page-size");
         if (pgs_chck = page_sizes.end();
             find(page_sizes.begin(),pgs_chck,page_size) == pgs_chck) {
@@ -500,6 +489,14 @@ int main(const int argc, const char **argv) {
         //
     }else if (action.starts_with("c")) {
         print::cou("Checking arguments...");
+        hdr_chck2 = parser.get<string>("--header-version");
+        if (hdr_chck2.empty()) {
+            print::cer("Please, specify header version.");
+            exit(1);
+        } else if (hdr_chck = header_versions.end(); find(header_versions.begin(), hdr_chck, stoi(hdr_chck2)) == hdr_chck) {
+            print::cer("Invalid header version. Only 0, 1, 2, 3 and 4 are available.");
+            exit(1);
+        } else header_version = stoi(hdr_chck2);
         chckhdrs[header_version](parser);
 
         print::cou("Building 'boot' header...");
