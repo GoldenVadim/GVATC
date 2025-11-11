@@ -4,4 +4,11 @@ project(GVATC)
 
 add_compile_options(-Wall -Wextra -Werror)
 
-add_executable(abootimgm abootimgm/bootimg.h abootimgm/main.cpp)
+file(GLOB mabootimg mabootimg/*)
+add_executable(mabootimg ${mabootimg})
+
+include(GNUInstallDirs)
+install(TARGETS mabootimg
+        RUNTIME DESTINATION bin
+        LIBRARY DESTINATION lib
+        ARCHIVE DESTINATION lib)
