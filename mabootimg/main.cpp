@@ -23,7 +23,7 @@ uint32_t     header_version,   page_size,               os_version;
 path         boot_output_path, vendor_boot_output_path,
              kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path;
 vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, pad;
-uint32_t     kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,           base_addr;
+unsigned     kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,           base_addr;
 size_t       kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
              name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size;
 vector<uint32_t>   os_version_,  os_patch_level_;
@@ -48,7 +48,7 @@ void pad_file(ofstream &file) { // I DONT LIKE IT
     file.write(pad.data(),pad_size);
 }
 
-void set_addr(const string &addr_str,uint32_t &addr) {
+void set_addr(const string &addr_str,unsigned &addr) {
     try { addr = base_addr + stoi(addr_str,nullptr,16); }
     catch (const std::invalid_argument &) {
         print::cer("Incorrect address: "+addr_str);
@@ -149,7 +149,7 @@ namespace hdr {
 
         name = args.get<string>("--name");
         name_size = name.size();
-        if (name_size > 16) {
+        if (name_size > /*VENDOR_*/BOOT_NAME_SIZE) {
             print::cer("Length of name of product cannot be bigger than 16 characters.");
             exit(1);
         }
@@ -359,6 +359,7 @@ namespace hdr {
     void rv3() {
         rd_base();
         read_file(vendor_ramdisk_path,"vendor ramdisk",vendor_ramdisk_size,vendor_ramdisk_data);
+        v234_rd_dtb();
     }
     void wvhdr(ofstream &writable) {
         writable.write(vendor_boot_img_hdr.first,vendor_boot_img_hdr.second);
@@ -467,17 +468,17 @@ int main(const int argc, const char **argv) {
     parser.add_argument("-R","--ramdisk-addr")
     .help("[create] Set hexadecimal number of address of initial RAM disk(s) image(s)")
     .metavar("<0x0>")
-    //.scan<'x',unsigned long>()
+    //.scan<'x',unsigned>()
     .default_value("0x01000000");
     parser.add_argument("-D","--dtb-addr")
     .help("[create] Set hexadecimal number of address of DTB image")
     .metavar("<0x0>")
-    //.scan<'x',unsigned long>()
+    //.scan<'x',unsigned>()
     .default_value("0x01f00000");
     parser.add_argument("-t","--tags-addr")
     .help("[create] Set hexadecimal number of kernel's tags if needed")
     .metavar("<0x0>")
-    //.scan<'x',unsigned long>()
+    //.scan<'x',unsigned>()
     .default_value("0x00000100");
     parser.add_argument("-n","--name")
     .help("[create] Set name of (board) product in bootable")
