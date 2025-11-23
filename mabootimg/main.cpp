@@ -1,5 +1,5 @@
 #define GVATC_TOOL_NAME "mabootimg"
-#define GVATC_VERSION "2025.11.15"
+#define GVATC_VERSION "2025.11.23"
 
 #include <fstream>
 #include <cstring>
@@ -7,48 +7,51 @@
 #include "termcolor/termcolor.hpp"
 #include "bootimg.h"
 
-using std::cout,std::cerr,std::endl,std::string,std::to_string,std::exception,std::function,std::stoull,
-      std::ifstream,std::ofstream,std::ios,std::streamsize,std::filesystem::exists,std::filesystem::file_size,
+using std::cout,std::cerr,std::endl,std::string,std::to_string,std::exception,std::function,std::stoi,std::hex,
       std::array,std::vector,std::pair,std::ranges::find,std::memset,std::memcpy,std::invalid_argument,
+      std::ifstream,std::ofstream,std::ios,std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
       termcolor::bright_red,termcolor::reset,
       argparse::ArgumentParser;
 
 constexpr char GVATC_TOOL_PRINT_PREFIX[24] = " [GVATC/" GVATC_TOOL_NAME "]: |> ";
-constexpr array<unsigned,4> header_versions = {0,1,2,3,};
-constexpr array<unsigned,4> page_sizes = {2048,4096,8192,16384}; // default: 4096
-array<unsigned,4>::const_iterator hdr_chck2, pgs_chck;
-string                            hdr_chck;
+constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
+constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384}; // default: 2048
+string hdr_chck;
 
-string action;
-unsigned   header_version,   page_size;uint32_t       os_version;
-string     name,             cmdline,                 extra_cmdline,      vendor_cmdline,
-           kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path,
-           boot_output_path, vendor_boot_output_path;
-char       *kernel_data,     *ramdisk_data,           *dtb_data,          *vendor_ramdisk_data;
-uint32_t   kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,            base_addr;
-size_t     name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size;
-streamsize kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size;
+string       action,           name,                    cmdline,            extra_cmdline,       vendor_cmdline;
+uint32_t     header_version,   page_size,               os_version;
+path         boot_output_path, vendor_boot_output_path,
+             kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path;
+vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, pad;
+uint32_t     kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,           base_addr;
+size_t       kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
+             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size;
 vector<uint32_t>   os_version_,  os_patch_level_;
 constexpr unsigned v34_boot_cmdline_size = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
-pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
+pair<const char*,size_t> boot_img_hdr, vendor_boot_img_hdr;
 
 namespace print {
-    void cou(const char *text) {
+    void cou(const string &text) {
         std::cout << GVATC_TOOL_PRINT_PREFIX << text << std::endl;
     }
-    void cer(const char *text) {
+    void cer(const string &text) {
         std::cerr << bright_red << GVATC_TOOL_PRINT_PREFIX << text << std::endl;
     }
 }
 
-unsigned get_page_size_of_image(const unsigned &image_size) {
-    return (image_size + page_size - 1) / page_size;
+//unsigned get_pages_of_image(const unsigned &image_size) { return (image_size + page_size - 1) / page_size; }
+
+void pad_file(ofstream &file) { // I DONT LIKE IT
+    pad_size = (page_size - (file.tellp() & (page_size - 1))) & (page_size - 1);
+    pad.resize(pad_size);
+    pad.assign(pad_size,0);
+    file.write(pad.data(),pad_size);
 }
 
 void set_addr(const string &addr_str,uint32_t &addr) {
-    try { addr = base_addr + stoull(addr_str,nullptr,16); }
+    try { addr = base_addr + stoi(addr_str,nullptr,16); }
     catch (const std::invalid_argument &) {
-        print::cer(("Incorrect address: "+addr_str).c_str());
+        print::cer("Incorrect address: "+addr_str);
         exit(1);
     }
 }
@@ -57,16 +60,21 @@ void set_addr(const string &addr_str,uint32_t &addr) {
 
 }*/
 
-void read_file(const string &path,const string &what,streamsize &size,char *&buffer) {
-    print::cou(("Reading "+what+" file...").c_str());
+void read_file(const path &path,const string &what,size_t &size,vector<char> &buffer) {
+    print::cou("Reading "+what+" file...");
     size = file_size(path);
     if (size == 0) {
         print::cer("This file is empty.");
         exit(1);
     }
-    buffer = new char[size];
-    if (ifstream file(path,ios::binary); !file.read(buffer,size)) {
-        print::cer(("Failed to read this "+what+" file.").c_str());
+    ifstream file(path,ios::binary);
+    if (!file) {
+        print::cer("Failed to open this "+what+" file.");
+        exit(1);
+    }
+    buffer.resize(size);
+    if (!file.read(buffer.data(),size)) {
+        print::cer("Failed to read this "+what+" file.");
         exit(1);
     }
 }
@@ -77,12 +85,13 @@ void set_os_version(const uint32_t &major,const uint32_t &minor,const uint32_t &
 }
 
 void set_os_patch_level(uint32_t &year,const uint32_t &month) { // changed SetOsPatchLevel
-    if (year < 2000 && month > 0) {
-        print::cou("Note that OS patch level will not be specified because your year is smaller than 2000.");
-        year = 0;
-    } else if (month > 12) {
+    if (month > 12) {
         print::cer("Invalid month");
         exit(1);
+    }
+    if (year < 2000 && month > 0) {
+        print::cou("Note that year in OS patch level will be 2000.");
+        year = 0;
     } else year -= 2000;
 
     os_version &= ~((1 << 11) - 1);
@@ -91,12 +100,11 @@ void set_os_patch_level(uint32_t &year,const uint32_t &month) { // changed SetOs
 
 namespace hdr {
     void bt_chck(const ArgumentParser &args) {
-        page_size = args.get<unsigned>("--page-size");
-        if (pgs_chck = page_sizes.end();
-            find(page_sizes.begin(),pgs_chck,page_size) == pgs_chck) {
+        page_size = args.get<uint32_t>("--page-size");
+        if (find(page_sizes.begin(),page_sizes.end(),page_size) == page_sizes.end()) {
             print::cer("Invalid or unsupported page size. Only 2048, 4096, 8192, 16384 are available.");
             exit(1);
-            }
+        }
 
         boot_output_path = args.get<string>("--boot-output");
         if (boot_output_path.empty()) {
@@ -136,9 +144,8 @@ namespace hdr {
             exit(1);
         }
         os_version = 0;
-        set_os_version(os_version_[0],os_version_[1],os_version_[2]);
-        set_os_patch_level(os_patch_level_[0],os_patch_level_[1]);
-        print::cou(to_string(os_version).c_str());
+        if (os_version_ != vector<uint32_t>{0,0,0}) set_os_version(os_version_[0],os_version_[1],os_version_[2]);
+        if (os_patch_level_ != vector<uint32_t>{0,0}) set_os_patch_level(os_patch_level_[0],os_patch_level_[1]);
 
         name = args.get<string>("--name");
         name_size = name.size();
@@ -172,10 +179,13 @@ namespace hdr {
     }
     void whdr(ofstream &writable) {
         writable.write(boot_img_hdr.first,boot_img_hdr.second);
+        pad_file(writable);
     }
     void wbase(ofstream &writable) {
-        writable.write(kernel_data,kernel_size);
-        writable.write(ramdisk_data,ramdisk_size);
+        writable.write(kernel_data.data(),kernel_size);
+        pad_file(writable);
+        writable.write(ramdisk_data.data(),ramdisk_size);
+        pad_file(writable);
     }
     void xtr_cmdln(const ArgumentParser &args) {
         extra_cmdline = args.get<string>("--extra-cmdline");
@@ -196,7 +206,7 @@ namespace hdr {
         wbase(writable);
         //writable.write(second_data,second_size);
     }
-    pair<const char*,streamsize> v0() {
+    pair<const char*,size_t> v0() {
         static boot_img_hdr_v0 boot_img_hdr;
         memcpy(boot_img_hdr.magic,BOOT_MAGIC,BOOT_MAGIC_SIZE);
         boot_img_hdr.kernel_size = kernel_size;
@@ -231,8 +241,9 @@ namespace hdr {
     void wv1(ofstream &writable) {
         wv0(writable);
         //writable.write(recovery_dtbo_data,recovery_dtbo_size);
+        //pad
     }
-    pair<const char*,streamsize> v1() {
+    pair<const char*,size_t> v1() {
         static boot_img_hdr_v1 boot_img_hdr;
         memcpy(boot_img_hdr.magic,BOOT_MAGIC,BOOT_MAGIC_SIZE);
         boot_img_hdr.kernel_size = kernel_size;
@@ -278,9 +289,10 @@ namespace hdr {
     }
     void wv2(ofstream &writable) {
         wv1(writable);
-        writable.write(dtb_data,dtb_size);
+        writable.write(dtb_data.data(),dtb_size);
+        pad_file(writable);
     }
-    pair<const char*,streamsize> v2() {
+    pair<const char*,size_t> v2() {
         static boot_img_hdr_v2 boot_img_hdr;
         memcpy(boot_img_hdr.magic,BOOT_MAGIC,BOOT_MAGIC_SIZE);
         boot_img_hdr.kernel_size = kernel_size;
@@ -350,6 +362,7 @@ namespace hdr {
     }
     void wvhdr(ofstream &writable) {
         writable.write(vendor_boot_img_hdr.first,vendor_boot_img_hdr.second);
+        pad_file(writable);
     }
     void wv3(ofstream &writable) {
         whdr(writable);
@@ -357,11 +370,13 @@ namespace hdr {
 
         ofstream vendor_boot(vendor_boot_output_path,ios::binary);
         wvhdr(vendor_boot);
-        vendor_boot.write(vendor_ramdisk_data,vendor_ramdisk_size);
-        vendor_boot.write(dtb_data,dtb_size);
+        vendor_boot.write(vendor_ramdisk_data.data(),vendor_ramdisk_size);
+        pad_file(vendor_boot);
+        vendor_boot.write(dtb_data.data(),dtb_size);
+        pad_file(vendor_boot);
         vendor_boot.close();
     }
-    pair<const char*,streamsize> vv3() {
+    pair<const char*,size_t> vv3() {
         static vendor_boot_img_hdr_v3 boot_img_hdr;
         memcpy(boot_img_hdr.magic,VENDOR_BOOT_MAGIC,VENDOR_BOOT_MAGIC_SIZE);
         boot_img_hdr.header_version = header_version;
@@ -381,7 +396,7 @@ namespace hdr {
         boot_img_hdr.header_size = sizeof(boot_img_hdr);
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
-    pair<const char*,streamsize> v3() {
+    pair<const char*,size_t> v3() {
         print::cou("Building 'vendor_boot' 3 header...");
         vendor_boot_img_hdr = vv3();
 
@@ -400,7 +415,7 @@ namespace hdr {
     }
 }
 
-array<function<pair<const char*,streamsize>()>,4> bldhdrs = {hdr::v0,hdr::v1,hdr::v2,hdr::v3,};
+array<function<pair<const char*,size_t>()>,4> bldhdrs = {hdr::v0,hdr::v1,hdr::v2,hdr::v3,};
 array<function<void(ofstream &)>,4> wrthdrs = {hdr::wv0,hdr::wv1,hdr::wv2,hdr::wv3,};
 array<function<void(ArgumentParser &)>,4> chckhdrs = {hdr::cv0,hdr::cv1,hdr::cv2,hdr::cv3,};
 array<function<void()>,4> rdhdrs = {hdr::rv0,hdr::rv1,hdr::rv2,hdr::rv3,};
@@ -423,7 +438,7 @@ int main(const int argc, const char **argv) {
     .help("[create] Specify the page size of Android 'boot'")
     .metavar("<2048/4096/8192/16384>")
     .scan<'i',unsigned>()
-    .default_value(page_sizes[1]);
+    .default_value(page_sizes[0]); // 2048
     parser.add_argument("-k","--kernel")
     .help("[create] Add kernel (ACK/Linux) to Android 'boot'")
     .metavar("<Image(.gz-dtb)>")
@@ -443,27 +458,27 @@ int main(const int argc, const char **argv) {
     parser.add_argument("-B","--start-addr")
     .help("[create] Use addresses arguments as offsets (-B + -K/R/D/t)")
     .metavar("<0x0>")
-    .default_value("0x0");
+    .default_value("0x10000000");
     parser.add_argument("-K","--kernel-addr")
     .help("[create] Set hexadecimal number of address of kernel image")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
-    .default_value("0x0");
+    .default_value("0x00008000");
     parser.add_argument("-R","--ramdisk-addr")
     .help("[create] Set hexadecimal number of address of initial RAM disk(s) image(s)")
     .metavar("<0x0>")
     //.scan<'x',unsigned long>()
-    .default_value("0x0");
+    .default_value("0x01000000");
     parser.add_argument("-D","--dtb-addr")
     .help("[create] Set hexadecimal number of address of DTB image")
     .metavar("<0x0>")
     //.scan<'x',unsigned long>()
-    .default_value("0x0");
+    .default_value("0x01f00000");
     parser.add_argument("-t","--tags-addr")
     .help("[create] Set hexadecimal number of kernel's tags if needed")
     .metavar("<0x0>")
     //.scan<'x',unsigned long>()
-    .default_value("0x0");
+    .default_value("0x00000100");
     parser.add_argument("-n","--name")
     .help("[create] Set name of (board) product in bootable")
     .metavar("<Redmi 5>")
@@ -522,7 +537,7 @@ int main(const int argc, const char **argv) {
         //
         print::cou("wait...");
         //
-    }else if (action.starts_with("c")) {
+    } else if (action.starts_with("c")) {
         print::cou("Checking arguments...");
         hdr_chck = parser.get<string>("--header-version");
         if (hdr_chck.empty() || hdr_chck.starts_with("-")) {
@@ -534,7 +549,7 @@ int main(const int argc, const char **argv) {
             print::cer("Invalid header version. Only 0, 1, 2, 3 and 4 are available.");
             exit(1);
         }
-        print::cou(("Header version: "+hdr_chck).c_str());
+        print::cou("Header version: "+hdr_chck);
 
         chckhdrs[header_version](parser);
 
