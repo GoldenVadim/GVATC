@@ -1,34 +1,4 @@
-#define GVATC_TOOL_NAME "mabootimg"
-#define GVATC_VERSION "2025.11.23"
-
-#include <fstream>
-#include <cstring>
-#include "argparse/argparse.hpp"
-#include "termcolor/termcolor.hpp"
-#include "bootimg.h"
-
-using std::cout,std::cerr,std::endl,std::string,std::to_string,std::exception,std::function,std::stoi,std::hex,
-      std::array,std::vector,std::pair,std::ranges::find,std::memset,std::memcpy,std::invalid_argument,
-      std::ifstream,std::ofstream,std::ios,std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
-      termcolor::bright_red,termcolor::reset,
-      argparse::ArgumentParser;
-
-constexpr char GVATC_TOOL_PRINT_PREFIX[24] = " [GVATC/" GVATC_TOOL_NAME "]: |> ";
-constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
-constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384}; // default: 2048
-string hdr_chck;
-
-string       action,           name,                    cmdline,            extra_cmdline,       vendor_cmdline;
-uint32_t     header_version,   page_size,               os_version;
-path         boot_output_path, vendor_boot_output_path,
-             kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path;
-vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, pad;
-unsigned     kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,           base_addr;
-size_t       kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
-             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size;
-vector<uint32_t>   os_version_,  os_patch_level_;
-constexpr unsigned v34_boot_cmdline_size = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
-pair<const char*,size_t> boot_img_hdr, vendor_boot_img_hdr;
+#include "main.h"
 
 namespace print {
     void cou(const string &text) {
@@ -44,7 +14,6 @@ namespace print {
 void pad_file(ofstream &file) { // I DONT LIKE IT
     pad_size = (page_size - (file.tellp() & (page_size - 1))) & (page_size - 1);
     pad.resize(pad_size);
-    pad.assign(pad_size,0);
     file.write(pad.data(),pad_size);
 }
 
@@ -274,6 +243,10 @@ namespace hdr {
             print::cer("Path to DTB file must not be empty.");
             exit(1);
         }
+        if (!exists(dtb_path)) {
+            print::cer("Invalid DTB file path.");
+            exit(1);
+        }
         set_addr(args.get<string>("--dtb-addr"),dtb_addr);
     }
     void v234_rd_dtb() {
@@ -398,7 +371,7 @@ namespace hdr {
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
     pair<const char*,size_t> v3() {
-        print::cou("Building 'vendor_boot' 3 header...");
+        print::cou("Building 'vendor_boot' header...");
         vendor_boot_img_hdr = vv3();
 
         static boot_img_hdr_v3 boot_img_hdr;
@@ -546,8 +519,8 @@ int main(const int argc, const char **argv) {
             exit(1);
         }
         header_version = stoi(hdr_chck);
-        if (header_version > header_versions.size()) {
-            print::cer("Invalid header version. Only 0, 1, 2, 3 and 4 are available.");
+        if (header_version > header_versions.size()-1) {
+            print::cer("Invalid header version. Only 0, 1, 2, 3 are available.");
             exit(1);
         }
         print::cou("Header version: "+hdr_chck);
