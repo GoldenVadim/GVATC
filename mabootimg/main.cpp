@@ -1,14 +1,5 @@
 #include "main.h"
 
-namespace print {
-    void cou(const string &text) {
-        std::cout << GVATC_TOOL_PRINT_PREFIX << text << std::endl;
-    }
-    void cer(const string &text) {
-        std::cerr << bright_red << GVATC_TOOL_PRINT_PREFIX << text << std::endl;
-    }
-}
-
 //unsigned get_pages_of_image(const unsigned &image_size) { return (image_size + page_size - 1) / page_size; }
 
 void pad_file(ofstream &file) { // I DONT LIKE IT
@@ -20,7 +11,7 @@ void pad_file(ofstream &file) { // I DONT LIKE IT
 void set_addr(const string &addr_str,unsigned &addr) {
     try { addr = base_addr + stoi(addr_str,nullptr,16); }
     catch (const std::invalid_argument &) {
-        print::cer("Incorrect address: "+addr_str);
+        print::err("Incorrect address: "+addr_str);
         exit(1);
     }
 }
@@ -30,20 +21,20 @@ void set_addr(const string &addr_str,unsigned &addr) {
 }*/
 
 void read_file(const path &path,const string &what,size_t &size,vector<char> &buffer) {
-    print::cou("Reading "+what+" file...");
+    print::inf("Reading "+what+" file...");
     size = file_size(path);
     if (size == 0) {
-        print::cer("This file is empty.");
+        print::err("This file is empty.");
         exit(1);
     }
     ifstream file(path,ios::binary);
     if (!file) {
-        print::cer("Failed to open this "+what+" file.");
+        print::err("Failed to open this "+what+" file.");
         exit(1);
     }
     buffer.resize(size);
     if (!file.read(buffer.data(),size)) {
-        print::cer("Failed to read this "+what+" file.");
+        print::err("Failed to read this "+what+" file.");
         exit(1);
     }
 }
@@ -55,11 +46,11 @@ void set_os_version(const uint32_t &major,const uint32_t &minor,const uint32_t &
 
 void set_os_patch_level(uint32_t &year,const uint32_t &month) { // changed SetOsPatchLevel
     if (month > 12) {
-        print::cer("Invalid month");
+        print::err("Invalid month");
         exit(1);
     }
     if (year < 2000 && month > 0) {
-        print::cou("Note that year in OS patch level will be 2000.");
+        print::wrn("Note that year in OS patch level will be 2000.");
         year = 0;
     } else year -= 2000;
 
@@ -71,45 +62,45 @@ namespace hdr {
     void bt_chck(const ArgumentParser &args) {
         page_size = args.get<uint32_t>("--page-size");
         if (find(page_sizes.begin(),page_sizes.end(),page_size) == page_sizes.end()) {
-            print::cer("Invalid or unsupported page size. Only 2048, 4096, 8192, 16384 are available.");
+            print::err("Invalid or unsupported page size. Only 2048, 4096, 8192, 16384 are available.");
             exit(1);
         }
 
         boot_output_path = args.get<string>("--boot-output");
         if (boot_output_path.empty()) {
-            print::cer("'boot' file output path must be specified.");
+            print::err("'boot' file output path must be specified.");
             exit(1);
         }
 
         kernel_path = args.get<string>("--kernel");
         if (kernel_path.empty()) {
-            print::cer("Path to kernel file must be specified.");
+            print::err("Path to kernel file must be specified.");
             exit(1);
         }
         if (!exists(kernel_path)) {
-            print::cer("Invalid kernel file path.");
+            print::err("Invalid kernel file path.");
             exit(1);
         }
 
         ramdisk_path = args.get<string>("--ramdisk");
         if (ramdisk_path.empty()) {
-            print::cer("Path to ramdisk file must be specified.");
+            print::err("Path to ramdisk file must be specified.");
             exit(1);
         }
         if (!exists(ramdisk_path)) {
-            print::cer("Invalid ramdisk file path.");
+            print::err("Invalid ramdisk file path.");
             exit(1);
         }
 
-        print::cou("Calculating OS version value...");
+        print::inf("Calculating OS version value...");
         os_version_  = args.get<vector<uint32_t>>("--os-version");
         if (os_version_.size() < 3) {
-            print::cer("Please, specify major, minor and patch integers in OS version argument.");
+            print::err("Please, specify major, minor and patch integers in OS version argument.");
             exit(1);
         }
         os_patch_level_ = args.get<vector<uint32_t>>("--os-patch-level");
         if (os_patch_level_.size() < 2) {
-            print::cer("Please, specify year and month integers in OS patch level argument.");
+            print::err("Please, specify year and month integers in OS patch level argument.");
             exit(1);
         }
         os_version = 0;
@@ -119,7 +110,7 @@ namespace hdr {
         name = args.get<string>("--name");
         name_size = name.size();
         if (name_size > /*VENDOR_*/BOOT_NAME_SIZE) {
-            print::cer("Length of name of product cannot be bigger than 16 characters.");
+            print::err("Length of name of product cannot be bigger than 16 characters.");
             exit(1);
         }
 
@@ -127,11 +118,11 @@ namespace hdr {
         cmdline_size = cmdline.size();
         if (!cmdline.empty()) {
             if (header_version < 3 && cmdline_size > BOOT_ARGS_SIZE) {
-                print::cer("Length of command line before 3 header version cannot be bigger than 512 chars.");
+                print::err("Length of command line before 3 header version cannot be bigger than 512 chars.");
                 exit(1);
             }
             if (cmdline_size > v34_boot_cmdline_size) {
-                print::cer("Length of command line in 3+ header version cannot be bigger than 1536 chars.");
+                print::err("Length of command line in 3+ header version cannot be bigger than 1536 chars.");
                 exit(1);
             }
         }
@@ -240,11 +231,11 @@ namespace hdr {
     void v234_dtb_chck(const ArgumentParser &args) {
         dtb_path = args.get<string>("--dtb");
         if (dtb_path.empty()) {
-            print::cer("Path to DTB file must not be empty.");
+            print::err("Path to DTB file must not be empty.");
             exit(1);
         }
         if (!exists(dtb_path)) {
-            print::cer("Invalid DTB file path.");
+            print::err("Invalid DTB file path.");
             exit(1);
         }
         set_addr(args.get<string>("--dtb-addr"),dtb_addr);
@@ -295,23 +286,23 @@ namespace hdr {
     }
     void vbt_chck(const ArgumentParser &args) {
         if (page_size != 4096) {
-            print::cou("Note that at 3 header version page size is fixed at 4096.");
+            print::wrn("Note that at 3 header version page size is fixed at 4096.");
             page_size = 4096;
         }
 
         vendor_boot_output_path = args.get<string>("--vendor-boot-output");
         if (vendor_boot_output_path.empty()) {
-            print::cer("'vendor_boot' file output path must not be empty.");
+            print::err("'vendor_boot' file output path must not be empty.");
             exit(1);
         }
 
         vendor_ramdisk_path = args.get<string>("--vendor-ramdisk");
         if (vendor_ramdisk_path.empty()) {
-            print::cer("Vendor specific ramdisk must be specified.");
+            print::err("Vendor specific ramdisk must be specified.");
             exit(1);
         }
         if (!exists(vendor_ramdisk_path)) {
-            print::cer("Invalid vendor ramdisk path.");
+            print::err("Invalid vendor ramdisk path.");
             exit(1);
         }
 
@@ -321,7 +312,7 @@ namespace hdr {
         vendor_cmdline_size = vendor_cmdline.size();
 
         if (vendor_cmdline_size > VENDOR_BOOT_ARGS_SIZE) {
-            print::cer("Length of vendor cmdline cannot be bigger than 2048 chars.");
+            print::err("Length of vendor cmdline cannot be bigger than 2048 chars.");
             exit(1);
         }
     }
@@ -371,7 +362,7 @@ namespace hdr {
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
     pair<const char*,size_t> v3() {
-        print::cou("Building 'vendor_boot' header...");
+        print::inf("Building 'vendor_boot' header...");
         vendor_boot_img_hdr = vv3();
 
         static boot_img_hdr_v3 boot_img_hdr;
@@ -395,15 +386,11 @@ array<function<void(ArgumentParser &)>,4> chckhdrs = {hdr::cv0,hdr::cv1,hdr::cv2
 array<function<void()>,4> rdhdrs = {hdr::rv0,hdr::rv1,hdr::rv2,hdr::rv3,};
 
 int main(const int argc, const char **argv) {
-    ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
+    ArgumentParser parser(GVATC_TOOL_NAME,GVATC_TOOL_VERSION);
     parser.add_description(GVATC_TOOL_NAME" (Manipulate Android 'bootimg') - The lightweight and fast tool to manipulate Android bootable images.");
     parser.add_epilog("Tool to create Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
                         "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
-    parser.add_argument("-a","--action")
-    .help("Specify the action to do with Android 'boot'")
-    .metavar("<create/inspect>")
-    .required();
     parser.add_argument("-H","--header-version")
     .help("[create] Specify the header version of Android 'boot'")
     .metavar("<0/1/2/3/4>")
@@ -502,46 +489,39 @@ int main(const int argc, const char **argv) {
 
     try { parser.parse_args(argc,argv); }
     catch (const exception &err) {
-        print::cer(err.what());
+        print::err(err.what());
         return 1;
     }
 
-    action = parser.get("--action");
-    if (action.starts_with("i")) {
-        //
-        print::cou("wait...");
-        //
-    } else if (action.starts_with("c")) {
-        print::cou("Checking arguments...");
-        hdr_chck = parser.get<string>("--header-version");
-        if (hdr_chck.empty() || hdr_chck.starts_with("-")) {
-            print::cer("Please, specify header version.");
-            exit(1);
-        }
-        header_version = stoi(hdr_chck);
-        if (header_version > header_versions.size()-1) {
-            print::cer("Invalid header version. Only 0, 1, 2, 3 are available.");
-            exit(1);
-        }
-        print::cou("Header version: "+hdr_chck);
+    print::inf("Checking arguments...");
+    hdr_chck = parser.get<string>("--header-version");
+    if (hdr_chck.empty() || hdr_chck.rfind('-',0) == 0) {
+        print::err("Please, specify header version.");
+        exit(1);
+    }
+    header_version = stoi(hdr_chck);
+    if (header_version > header_versions.size()-1) {
+        print::err("Invalid header version. Only 0, 1, 2, 3 are available.");
+        exit(1);
+    }
+    print::inf("Header version: "+hdr_chck);
 
-        chckhdrs[header_version](parser);
+    chckhdrs[header_version](parser);
 
-        print::cou("Reading required files...");
-        rdhdrs[header_version]();
+    print::inf("Reading required files...");
+    rdhdrs[header_version]();
 
-        print::cou("Building 'boot' header...");
-        boot_img_hdr = bldhdrs[header_version]();
+    print::inf("Building 'boot' header...");
+    boot_img_hdr = bldhdrs[header_version]();
 
-        print::cou("Writing data...");
-        ofstream boot(boot_output_path,ios::binary);
-        wrthdrs[header_version](boot);
-
-        print::cou("Successfully created bootable.");
-    } else {
-        print::cer("Specify create or inspect action.");
+    print::inf("Writing data...");
+    ofstream boot(boot_output_path,ios::binary);
+    if (!boot.is_open()) {
+        print::err("Failed to create/open output file.");
         return 1;
     }
+    wrthdrs[header_version](boot);
 
+    print::inf("Successfully created bootable.");
     return 0;
 }

@@ -1,19 +1,19 @@
+#pragma once
 #define GVATC_TOOL_NAME "mabootimg"
-#define GVATC_VERSION "2025.11.23"
+#define GVATC_TOOL_VERSION "2025.12.13"
 
 #include <fstream>
 #include <cstring>
+#include <string>
+#include "../libgvatc_common.h"
 #include "argparse/argparse.hpp"
-#include "termcolor/termcolor.hpp"
 #include "bootimg.h"
 
-using std::cout,std::cerr,std::endl,std::string,std::to_string,std::exception,std::function,std::stoi,std::hex,
-      std::array,std::vector,std::pair,std::ranges::find,std::memset,std::memcpy,std::invalid_argument,
+using std::exception,std::function,std::stoi,std::hex,std::string,
+      std::array,std::vector,std::pair,std::find,std::memset,std::memcpy,std::invalid_argument,
       std::ifstream,std::ofstream,std::ios,std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
-      termcolor::bright_red,termcolor::reset,
       argparse::ArgumentParser;
 
-constexpr char GVATC_TOOL_PRINT_PREFIX[24] = " [GVATC/" GVATC_TOOL_NAME "]: |> ";
 constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
 constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384}; // default: 2048
 inline string hdr_chck;
