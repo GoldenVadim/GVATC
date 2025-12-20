@@ -1,15 +1,14 @@
 #pragma once
 #define GVATC_TOOL_NAME "mabootimg"
-#define GVATC_TOOL_VERSION "2025.12.13"
+#define GVATC_TOOL_VERSION "2025.12.20"
 
 #include <fstream>
 #include <cstring>
-#include <string>
 #include "../libgvatc_common.h"
 #include "argparse/argparse.hpp"
 #include "bootimg.h"
 
-using std::exception,std::function,std::stoi,std::hex,std::string,
+using std::exception,std::function,std::stoi,std::hex,
       std::array,std::vector,std::pair,std::find,std::memset,std::memcpy,std::invalid_argument,
       std::ifstream,std::ofstream,std::ios,std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
       argparse::ArgumentParser;
