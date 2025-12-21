@@ -392,99 +392,88 @@ int main(const int argc, const char **argv) {
                         "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
     parser.add_argument("-H","--header-version")
-    .help("[create] Specify the header version of Android 'boot'")
+    .help("Specify the header version of Android 'boot'")
     .metavar("<0/1/2/3/4>")
     .default_value("");
     parser.add_argument("-p","--page-size")
-    .help("[create] Specify the page size of Android 'boot'")
+    .help("Specify the page size of Android 'boot'")
     .metavar("<2048/4096/8192/16384>")
     .scan<'i',unsigned>()
     .default_value(page_sizes[0]); // 2048
     parser.add_argument("-k","--kernel")
-    .help("[create] Add kernel (ACK/Linux) to Android 'boot'")
+    .help("Add kernel (ACK/Linux) to Android 'boot'")
     .metavar("<Image(.gz-dtb)>")
     .default_value("");
     parser.add_argument("-r","--ramdisk")
-    .help("[create] Add initial RAM disk image to Android 'boot'")
+    .help("Add initial RAM disk image to Android 'boot'")
     .metavar("<(Compressed) CPIO>")
     .default_value("");
     parser.add_argument("-d","--dtb")
-    .help("[create] Add Device Tree Blob to Android 'boot' or 'vendor_boot'. DTB must be included in kernel file if using 0 header version")
+    .help("Add Device Tree Blob to Android 'boot' or 'vendor_boot'. DTB must be included in kernel file if using 0 header version")
     .metavar("<DTB>")
     .default_value("");
     parser.add_argument("-i","--vendor-ramdisk")
-    .help("[create] Add vendor's specific initrd to 'vendor_boot' (3+ header version only)")
+    .help("Add vendor's specific initrd to 'vendor_boot' (3+ header version only)")
     .metavar("<(Compressed) CPIO>")
     .default_value("");
     parser.add_argument("-B","--start-addr")
-    .help("[create] Use addresses arguments as offsets (-B + -K/R/D/t)")
+    .help("Use addresses arguments as offsets (-B + -K/R/D/t)")
     .metavar("<0x0>")
     .default_value("0x10000000");
     parser.add_argument("-K","--kernel-addr")
-    .help("[create] Set hexadecimal number of address of kernel image")
+    .help("Set hexadecimal number of address of kernel image")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x00008000");
     parser.add_argument("-R","--ramdisk-addr")
-    .help("[create] Set hexadecimal number of address of initial RAM disk(s) image(s)")
+    .help("Set hexadecimal number of address of initial RAM disk(s) image(s)")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x01000000");
     parser.add_argument("-D","--dtb-addr")
-    .help("[create] Set hexadecimal number of address of DTB image")
+    .help("Set hexadecimal number of address of DTB image")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x01f00000");
     parser.add_argument("-t","--tags-addr")
-    .help("[create] Set hexadecimal number of kernel's tags if needed")
+    .help("Set hexadecimal number of kernel's tags if needed")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x00000100");
     parser.add_argument("-n","--name")
-    .help("[create] Set name of (board) product in bootable")
+    .help("Set name of (board) product in bootable")
     .metavar("<Redmi 5>")
     .default_value("");
     parser.add_argument("-V","--os-version")
-    .help("[create] Set version of operating system in bootable")
+    .help("Set version of operating system in bootable")
     .metavar("<0.0.0>")
     .nargs(3)
     .scan<'i',unsigned>()
     .default_value(vector<uint32_t>{0,0,0});
     parser.add_argument("-P","--os-patch-level")
-    .help("[create] Set patch level of operating system in bootable")
+    .help("Set patch level of operating system in bootable")
     .metavar("<0000-00>")
     .nargs(2)
     .scan<'i',unsigned>()
     .default_value(vector<uint32_t>{0,0});
     parser.add_argument("-c","--cmdline")
-    .help("[create] Set command line of arguments that will be given to kernel")
+    .help("Set command line of arguments that will be given to kernel")
     .metavar("<console=tty0>")
     .default_value("");
     parser.add_argument("-C","--vendor-cmdline")
-    .help("[create] Set vendor's specific command line in 'vendor_boot' (3+ header version only)")
+    .help("Set vendor's specific command line in 'vendor_boot' (3+ header version only)")
     .metavar("<console=ttyMSM0>")
     .default_value("");
     parser.add_argument("-l","--extra-cmdline")
-    .help("[create] Set additional cmdline in 'boot'. Created for compatibility with older versions of mkbootimg. Not recommended to use. (0-2 header version only)")
+    .help("Set additional cmdline in 'boot'. Created for compatibility with older versions of mkbootimg. Not recommended to use. (0-2 header version only)")
     .default_value("");
     parser.add_argument("-O","--vendor-boot-output")
-    .help("[create] Path to output of 'vendor_boot' bootable image file")
+    .help("Path to output of 'vendor_boot' bootable image file")
     .metavar("<vendor_boot.img>")
     .default_value("");
     parser.add_argument("-o","--boot-output")
-    .help("[create] Relative or absolute output path of 'boot' image file")
+    .help("Relative or absolute output path of 'boot' image file")
     .metavar("<boot.img>")
-    .default_value("");
-    parser.add_argument("-b","--boot")
-    .help("[inspect] Path to Android bootable image to do with")
-    .metavar("<(vendor_)boot.img>")
-    .default_value("");
-    parser.add_argument("-u","--unpack")
-    .help("[inspect] Give kernel and ramdisk or DTB and vendor ramdisk files after giving information")
-    .flag();
-    parser.add_argument("--unpack-dir")
-    .help("[inspect, unpack] Path to output directory of files of bootable")
-    .metavar("<out>")
     .default_value("");
 
     try { parser.parse_args(argc,argv); }
@@ -495,7 +484,7 @@ int main(const int argc, const char **argv) {
 
     print::inf("Checking arguments...");
     hdr_chck = parser.get<string>("--header-version");
-    if (hdr_chck.empty() || hdr_chck.rfind('-',0) == 0) {
+    if (hdr_chck.empty()) {
         print::err("Please, specify header version.");
         exit(1);
     }

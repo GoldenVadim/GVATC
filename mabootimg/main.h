@@ -1,6 +1,6 @@
 #pragma once
 #define GVATC_TOOL_NAME "mabootimg"
-#define GVATC_TOOL_VERSION "2025.12.20"
+#define GVATC_TOOL_VERSION "2025.12.21"
 
 #include <fstream>
 #include <cstring>
