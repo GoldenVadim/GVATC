@@ -1,4 +1,32 @@
-#include "main.h"
+#define GVATC_TOOL_NAME "gabootimg"
+#define GVATC_TOOL_VERSION "2025.12.21"
+
+#include <fstream>
+#include <cstring>
+#include "../libgvatc_common.h"
+#include "argparse/argparse.hpp"
+#include "bootimg.h"
+
+using std::exception,std::function,std::stoi,std::hex,std::to_string,
+      std::array,std::vector,std::pair,std::find,std::memset,std::memcpy,std::invalid_argument,
+      std::ifstream,std::ofstream,std::ios,std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
+      argparse::ArgumentParser;
+
+constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
+constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384}; // default: 2048
+constexpr unsigned v34_boot_cmdline_size = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
+
+string       action,           name,                    cmdline,            extra_cmdline,       vendor_cmdline;
+uint32_t     header_version,   page_size,               os_version;
+path         boot_output_path, vendor_boot_output_path,
+             kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path;
+vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, pad;
+unsigned     kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,           base_addr;
+size_t       kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
+             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size;
+vector<uint32_t> os_version_,  os_patch_level_;
+pair<const char*,size_t> boot_img_hdr, vendor_boot_img_hdr;
+vector<ofstream> writables;
 
 //unsigned get_pages_of_image(const unsigned &image_size) { return (image_size + page_size - 1) / page_size; }
 
@@ -147,24 +175,26 @@ namespace hdr {
         writable.write(ramdisk_data.data(),ramdisk_size);
         pad_file(writable);
     }
-    void xtr_cmdln(const ArgumentParser &args) {
-        extra_cmdline = args.get<string>("--extra-cmdline");
-        extra_cmdline_size = extra_cmdline.size();
-    }
     void cv0(const ArgumentParser &args) {
         bt_chck(args);
-        xtr_cmdln(args);
+        extra_cmdline = args.get<string>("--extra-cmdline");
+        extra_cmdline_size = extra_cmdline.size();
         //second_path =
     }
     void rv0() {
         rd_base();
         //rd_scnd();
     }
-
-    void wv0(ofstream &writable) {
-        whdr(writable);
-        wbase(writable);
-        //writable.write(second_data,second_size);
+    void oboot() {
+        writables.emplace_back(boot_output_path,ios::binary);
+    }
+    void ov0() {
+        oboot();
+    }
+    void wv0() {
+        whdr(writables[0]);
+        wbase(writables[0]);
+        //writables[0].write(second_data,second_size);
     }
     pair<const char*,size_t> v0() {
         static boot_img_hdr_v0 boot_img_hdr;
@@ -198,10 +228,13 @@ namespace hdr {
         rv0();
         //rd_rcvrdtbo();
     }
-    void wv1(ofstream &writable) {
-        wv0(writable);
-        //writable.write(recovery_dtbo_data,recovery_dtbo_size);
-        //pad
+    void ov1() {
+        ov0();
+    }
+    void wv1() {
+        wv0();
+        //writables[0].write(recovery_dtbo_data,recovery_dtbo_size);
+        //pad_file(writables[0])
     }
     pair<const char*,size_t> v1() {
         static boot_img_hdr_v1 boot_img_hdr;
@@ -243,18 +276,24 @@ namespace hdr {
     void v234_rd_dtb() {
         read_file(dtb_path,"DTB",dtb_size,dtb_data);
     }
+    void v234_wrt_dtb(ofstream &writable) {
+        writable.write(dtb_data.data(),dtb_size);
+        pad_file(writable);
+    }
     void cv2(const ArgumentParser &args) {
-        v234_dtb_chck(args);
         cv1(args);
+        v234_dtb_chck(args);
     }
     void rv2() {
         rv1();
         v234_rd_dtb();
     }
-    void wv2(ofstream &writable) {
-        wv1(writable);
-        writable.write(dtb_data.data(),dtb_size);
-        pad_file(writable);
+    void ov2() {
+        ov1();
+    }
+    void wv2() {
+        wv1();
+        v234_wrt_dtb(writables[0]);
     }
     pair<const char*,size_t> v2() {
         static boot_img_hdr_v2 boot_img_hdr;
@@ -325,21 +364,25 @@ namespace hdr {
         read_file(vendor_ramdisk_path,"vendor ramdisk",vendor_ramdisk_size,vendor_ramdisk_data);
         v234_rd_dtb();
     }
+    void ov3() {
+        oboot();
+        writables.emplace_back(vendor_boot_output_path,ios::binary);
+    }
     void wvhdr(ofstream &writable) {
         writable.write(vendor_boot_img_hdr.first,vendor_boot_img_hdr.second);
         pad_file(writable);
     }
-    void wv3(ofstream &writable) {
-        whdr(writable);
-        wbase(writable);
+    void wv3() {
+        // boot
+        whdr(writables[0]);
+        wbase(writables[0]);
 
-        ofstream vendor_boot(vendor_boot_output_path,ios::binary);
-        wvhdr(vendor_boot);
-        vendor_boot.write(vendor_ramdisk_data.data(),vendor_ramdisk_size);
-        pad_file(vendor_boot);
-        vendor_boot.write(dtb_data.data(),dtb_size);
-        pad_file(vendor_boot);
-        vendor_boot.close();
+        // vendor_boot
+        wvhdr(writables[1]);
+        writables[1].write(vendor_ramdisk_data.data(),vendor_ramdisk_size);
+        pad_file(writables[1]);
+        v234_wrt_dtb(writables[1]);
+        writables[1].close();
     }
     pair<const char*,size_t> vv3() {
         static vendor_boot_img_hdr_v3 boot_img_hdr;
@@ -380,21 +423,23 @@ namespace hdr {
     }
 }
 
-array<function<pair<const char*,size_t>()>,4> bldhdrs = {hdr::v0,hdr::v1,hdr::v2,hdr::v3,};
-array<function<void(ofstream &)>,4> wrthdrs = {hdr::wv0,hdr::wv1,hdr::wv2,hdr::wv3,};
-array<function<void(ArgumentParser &)>,4> chckhdrs = {hdr::cv0,hdr::cv1,hdr::cv2,hdr::cv3,};
-array<function<void()>,4> rdhdrs = {hdr::rv0,hdr::rv1,hdr::rv2,hdr::rv3,};
+const array<function<pair<const char*,size_t>()>,4> bldhdrs = {hdr::v0,hdr::v1,hdr::v2,hdr::v3,};
+const array<function<void(ArgumentParser&)>,4> chckhdrs = {hdr::cv0,hdr::cv1,hdr::cv2,hdr::cv3,};
+const array<function<void()>,4> rdhdrs = {hdr::rv0,hdr::rv1,hdr::rv2,hdr::rv3,};
+const array<function<void()>,4> opnfls = {hdr::ov0,hdr::ov1,hdr::ov2,hdr::ov3,};
+const array<function<void()>,4> wrthdrs = {hdr::wv0,hdr::wv1,hdr::wv2,hdr::wv3,};
 
 int main(const int argc, const char **argv) {
     ArgumentParser parser(GVATC_TOOL_NAME,GVATC_TOOL_VERSION);
-    parser.add_description(GVATC_TOOL_NAME" (Manipulate Android 'bootimg') - The lightweight and fast tool to manipulate Android bootable images.");
+    parser.add_description(GVATC_TOOL_NAME" (Generate Android 'bootimg') - The lightweight and fast tool to manipulate Android bootable images.");
     parser.add_epilog("Tool to create Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
-                        "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
+                         "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
     parser.add_argument("-H","--header-version")
     .help("Specify the header version of Android 'boot'")
     .metavar("<0/1/2/3/4>")
-    .default_value("");
+    .scan<'i',unsigned>()
+    .required();
     parser.add_argument("-p","--page-size")
     .help("Specify the page size of Android 'boot'")
     .metavar("<2048/4096/8192/16384>")
@@ -483,17 +528,12 @@ int main(const int argc, const char **argv) {
     }
 
     print::inf("Checking arguments...");
-    hdr_chck = parser.get<string>("--header-version");
-    if (hdr_chck.empty()) {
-        print::err("Please, specify header version.");
-        exit(1);
-    }
-    header_version = stoi(hdr_chck);
+    header_version = parser.get<unsigned>("--header-version");
     if (header_version > header_versions.size()-1) {
         print::err("Invalid header version. Only 0, 1, 2, 3 are available.");
         exit(1);
     }
-    print::inf("Header version: "+hdr_chck);
+    print::inf("Header version: "+to_string(header_version));
 
     chckhdrs[header_version](parser);
 
@@ -504,12 +544,8 @@ int main(const int argc, const char **argv) {
     boot_img_hdr = bldhdrs[header_version]();
 
     print::inf("Writing data...");
-    ofstream boot(boot_output_path,ios::binary);
-    if (!boot.is_open()) {
-        print::err("Failed to create/open output file.");
-        return 1;
-    }
-    wrthdrs[header_version](boot);
+    opnfls[header_version]();
+    wrthdrs[header_version]();
 
     print::inf("Successfully created bootable.");
     return 0;
