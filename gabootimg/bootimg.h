@@ -36,6 +36,7 @@
 #define BOOT_NAME_SIZE 16
 #define BOOT_ARGS_SIZE 512
 #define BOOT_EXTRA_ARGS_SIZE 1024
+#define v34_BOOT_ARGS_SIZE BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE
 
 #define VENDOR_BOOT_MAGIC "VNDRBOOT"
 #define VENDOR_BOOT_MAGIC_SIZE 8
@@ -274,7 +275,7 @@ struct boot_img_hdr_v3 {
     uint32_t header_version;
 
     // Asciiz kernel commandline.
-    uint8_t cmdline[BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE];
+    uint8_t cmdline[v34_BOOT_ARGS_SIZE];
 } __attribute__((packed));
 
 struct vendor_boot_img_hdr_v3 {

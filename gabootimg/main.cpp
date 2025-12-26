@@ -1,5 +1,5 @@
 #define GVATC_TOOL_NAME "gabootimg"
-#define GVATC_TOOL_VERSION "2025.12.21"
+#define GVATC_TOOL_VERSION "2025.12.27"
 
 #include <fstream>
 #include <cstring>
@@ -8,13 +8,13 @@
 #include "bootimg.h"
 
 using std::exception,std::function,std::stoi,std::hex,std::to_string,
-      std::array,std::vector,std::pair,std::find,std::memset,std::memcpy,std::invalid_argument,
-      std::ifstream,std::ofstream,std::ios,std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
-      argparse::ArgumentParser;
+      std::array,std::vector,std::pair,std::find,std::memset,std::memcpy,
+      std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
+      std::ifstream,std::ofstream,std::ios,
+      argparse::ArgumentParser,std::invalid_argument;
 
 constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
 constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384}; // default: 2048
-constexpr unsigned v34_boot_cmdline_size = BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE;
 
 string       action,           name,                    cmdline,            extra_cmdline,       vendor_cmdline;
 uint32_t     header_version,   page_size,               os_version;
@@ -24,8 +24,8 @@ vector<char> kernel_data,      ramdisk_data,            dtb_data,           vend
 unsigned     kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,           base_addr;
 size_t       kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
              name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size;
-vector<uint32_t> os_version_,  os_patch_level_;
 pair<const char*,size_t> boot_img_hdr, vendor_boot_img_hdr;
+vector<uint32_t> os_version_,  os_patch_level_;
 vector<ofstream> writables;
 
 //unsigned get_pages_of_image(const unsigned &image_size) { return (image_size + page_size - 1) / page_size; }
@@ -146,11 +146,11 @@ namespace hdr {
         cmdline_size = cmdline.size();
         if (!cmdline.empty()) {
             if (header_version < 3 && cmdline_size > BOOT_ARGS_SIZE) {
-                print::err("Length of command line before 3 header version cannot be bigger than 512 chars.");
+                print::err("Length of command line in 'boot' before 3 header version cannot be bigger than 512 chars.");
                 exit(1);
             }
-            if (cmdline_size > v34_boot_cmdline_size) {
-                print::err("Length of command line in 3+ header version cannot be bigger than 1536 chars.");
+            if (cmdline_size > v34_BOOT_ARGS_SIZE) {
+                print::err("Length of command line in 'boot' in 3+ header version cannot be bigger than 1536 chars.");
                 exit(1);
             }
         }
@@ -213,7 +213,7 @@ namespace hdr {
         memcpy(boot_img_hdr.name,name.c_str(),name_size);
         memset(boot_img_hdr.cmdline, 0,BOOT_ARGS_SIZE);
         memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
-        //boot_img_hdr.id = id;
+        // boot_img_hdr.id
         memset(boot_img_hdr.extra_cmdline, 0,BOOT_EXTRA_ARGS_SIZE);
         memcpy(boot_img_hdr.extra_cmdline,extra_cmdline.c_str(),extra_cmdline_size);
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
@@ -364,13 +364,21 @@ namespace hdr {
         read_file(vendor_ramdisk_path,"vendor ramdisk",vendor_ramdisk_size,vendor_ramdisk_data);
         v234_rd_dtb();
     }
+    void ovboot(){
+        writables.emplace_back(vendor_boot_output_path,ios::binary);
+    }
     void ov3() {
         oboot();
-        writables.emplace_back(vendor_boot_output_path,ios::binary);
+        ovboot();
     }
     void wvhdr(ofstream &writable) {
         writable.write(vendor_boot_img_hdr.first,vendor_boot_img_hdr.second);
         pad_file(writable);
+    }
+    void wvbase(ofstream &writable){
+        writable.write(vendor_ramdisk_data.data(),vendor_ramdisk_size);
+        pad_file(writable);
+        v234_wrt_dtb(writables[1]);
     }
     void wv3() {
         // boot
@@ -379,10 +387,7 @@ namespace hdr {
 
         // vendor_boot
         wvhdr(writables[1]);
-        writables[1].write(vendor_ramdisk_data.data(),vendor_ramdisk_size);
-        pad_file(writables[1]);
-        v234_wrt_dtb(writables[1]);
-        writables[1].close();
+        wvbase(writables[1]);
     }
     pair<const char*,size_t> vv3() {
         static vendor_boot_img_hdr_v3 boot_img_hdr;
@@ -416,7 +421,7 @@ namespace hdr {
         // header_size
         memset(boot_img_hdr.reserved,0,16);
         boot_img_hdr.header_version = header_version;
-        memset(boot_img_hdr.cmdline,0,v34_boot_cmdline_size);
+        memset(boot_img_hdr.cmdline,0,v34_BOOT_ARGS_SIZE);
         memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
         boot_img_hdr.header_size = sizeof(boot_img_hdr);
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
@@ -436,21 +441,21 @@ int main(const int argc, const char **argv) {
                          "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
     parser.add_argument("-H","--header-version")
-    .help("Specify the header version of Android 'boot'")
+    .help("Specify the header version of Android bootable image(s)")
     .metavar("<0/1/2/3/4>")
     .scan<'i',unsigned>()
     .required();
     parser.add_argument("-p","--page-size")
-    .help("Specify the page size of Android 'boot'")
+    .help("Specify the page size of Android bootable image(s)")
     .metavar("<2048/4096/8192/16384>")
     .scan<'i',unsigned>()
-    .default_value(page_sizes[0]); // 2048
+    .required();
     parser.add_argument("-k","--kernel")
     .help("Add kernel (ACK/Linux) to Android 'boot'")
     .metavar("<Image(.gz-dtb)>")
     .default_value("");
     parser.add_argument("-r","--ramdisk")
-    .help("Add initial RAM disk image to Android 'boot'")
+    .help("Add initial RAM filesystem image to Android 'boot'")
     .metavar("<(Compressed) CPIO>")
     .default_value("");
     parser.add_argument("-d","--dtb")
@@ -458,7 +463,7 @@ int main(const int argc, const char **argv) {
     .metavar("<DTB>")
     .default_value("");
     parser.add_argument("-i","--vendor-ramdisk")
-    .help("Add vendor's specific initrd to 'vendor_boot' (3+ header version only)")
+    .help("Add vendor's initial RAM filesystem image to 'vendor_boot' (3+ header version only)")
     .metavar("<(Compressed) CPIO>")
     .default_value("");
     parser.add_argument("-B","--start-addr")
@@ -471,22 +476,22 @@ int main(const int argc, const char **argv) {
     //.scan<'x',unsigned>()
     .default_value("0x00008000");
     parser.add_argument("-R","--ramdisk-addr")
-    .help("Set hexadecimal number of address of initial RAM disk(s) image(s)")
+    .help("Set hexadecimal number of address of initramfs(s) image(s)")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x01000000");
     parser.add_argument("-D","--dtb-addr")
-    .help("Set hexadecimal number of address of DTB image")
+    .help("Set hexadecimal number of address of Device Tree Blob")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x01f00000");
     parser.add_argument("-t","--tags-addr")
-    .help("Set hexadecimal number of kernel's tags if needed")
+    .help("Set hexadecimal number of address of kernel's tags")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x00000100");
     parser.add_argument("-n","--name")
-    .help("Set name of (board) product in bootable")
+    .help("Set name of product (board) in bootable image")
     .metavar("<Redmi 5>")
     .default_value("");
     parser.add_argument("-V","--os-version")
@@ -506,7 +511,7 @@ int main(const int argc, const char **argv) {
     .metavar("<console=tty0>")
     .default_value("");
     parser.add_argument("-C","--vendor-cmdline")
-    .help("Set vendor's specific command line in 'vendor_boot' (3+ header version only)")
+    .help("Set vendor's command line in 'vendor_boot' (3+ header version only)")
     .metavar("<console=ttyMSM0>")
     .default_value("");
     parser.add_argument("-l","--extra-cmdline")
@@ -531,7 +536,7 @@ int main(const int argc, const char **argv) {
     header_version = parser.get<unsigned>("--header-version");
     if (header_version > header_versions.size()-1) {
         print::err("Invalid header version. Only 0, 1, 2, 3 are available.");
-        exit(1);
+        return 1;
     }
     print::inf("Header version: "+to_string(header_version));
 
