@@ -457,7 +457,7 @@ int main(const int argc, const char **argv) {
     .scan<'i',unsigned>()
     .required();
     parser.add_argument("-p","--page-size")
-    .help("Specify the page size in Android bootable image(s)")
+    .help("Specify the page size in Android bootable image")
     .metavar("<2048/4096/8192/16384>")
     .scan<'i',unsigned>()
     .required();
