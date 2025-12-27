@@ -29,14 +29,13 @@
 
 #pragma once
 
-#include <stdint.h>
+#include <cstdint> // GoldenVadim: instead of stdint.h
 
 #define BOOT_MAGIC "ANDROID!"
 #define BOOT_MAGIC_SIZE 8
 #define BOOT_NAME_SIZE 16
 #define BOOT_ARGS_SIZE 512
 #define BOOT_EXTRA_ARGS_SIZE 1024
-#define v34_BOOT_ARGS_SIZE BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE
 
 #define VENDOR_BOOT_MAGIC "VNDRBOOT"
 #define VENDOR_BOOT_MAGIC_SIZE 8
@@ -49,6 +48,16 @@
 #define VENDOR_RAMDISK_TYPE_DLKM 3
 #define VENDOR_RAMDISK_NAME_SIZE 32
 #define VENDOR_RAMDISK_TABLE_ENTRY_BOARD_ID_SIZE 16
+
+// Additional macros added by GoldenVadim
+#define v34_BOOT_ARGS_SIZE BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE
+#define BOOT_IMAGE_HEADER_V1_SIZE 1648
+#define BOOT_IMAGE_HEADER_V2_SIZE 1660
+#define BOOT_IMAGE_HEADER_V3_SIZE 1580
+#define BOOT_IMAGE_HEADER_V4_SIZE 1584
+#define VENDOR_BOOT_IMAGE_HEADER_V3_SIZE 2112
+#define VENDOR_BOOT_IMAGE_HEADER_V4_SIZE 2128
+/////////////////////////////////////////
 
 /* When a boot header is of version 0, the structure of boot image is as
  * follows:
