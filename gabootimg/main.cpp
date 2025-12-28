@@ -17,17 +17,17 @@ using std::exception,std::function,std::stoi,std::hex,std::to_string,
 constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
 constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384}; // default: 2048
 
-string       action,           name,                    cmdline,            extra_cmdline,       vendor_cmdline;
-uint32_t     header_version,   page_size,               os_version;
 path         boot_output_path, vendor_boot_output_path,
              kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path;
 vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, pad;
 unsigned     kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,           base_addr;
-size_t       kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
-             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size;
-pair<const char*,size_t> boot_img_hdr, vendor_boot_img_hdr;
-vector<uint32_t> os_version_,  os_patch_level_;
-vector<ofstream> writables;
+uint32_t     kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
+             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size,
+             header_version,   page_size,               os_version;
+string       name,             cmdline,                 extra_cmdline,      vendor_cmdline,      action;
+pair<const char*,size_t> boot_img_hdr,     vendor_boot_img_hdr;
+vector<uint32_t>         os_version_,      os_patch_level_;
+vector<ofstream>         writables;
 
 //unsigned get_pages_of_image(const unsigned &image_size) { return (image_size + page_size - 1) / page_size; }
 
@@ -40,7 +40,7 @@ void pad_file(ofstream &file) { // I DONT LIKE IT
 void set_addr(const string &addr_str,unsigned &addr) {
     try { addr = base_addr + stoi(addr_str,nullptr,16); }
     catch (const std::invalid_argument &) {
-        print::err("Incorrect address: "+addr_str);
+        print::err("Incorrect address number: "+addr_str);
         exit(1);
     }
 }
@@ -49,7 +49,7 @@ void set_addr(const string &addr_str,unsigned &addr) {
 
 }*/
 
-void read_file(const path &path,const string &what,size_t &size,vector<char> &buffer) {
+void read_file(const path &path,const string &what,uint32_t &size,vector<char> &buffer) {
     print::inf("Reading "+what+" file...");
     size = file_size(path);
     if (size == 0) {
@@ -122,7 +122,7 @@ namespace hdr {
         }
 
         print::inf("Calculating OS version value...");
-        os_version_  = args.get<vector<uint32_t>>("--os-version");
+        os_version_ = args.get<vector<uint32_t>>("--os-version");
         if (os_version_.size() < 3) {
             print::err("Please, specify major, minor and patch integers in OS version argument.");
             exit(1);
@@ -132,13 +132,12 @@ namespace hdr {
             print::err("Please, specify year and month integers in OS patch level argument.");
             exit(1);
         }
-        os_version = 0;
-        if (os_version_ != vector<uint32_t>{0,0,0}) set_os_version(os_version_[0],os_version_[1],os_version_[2]);
-        if (os_patch_level_ != vector<uint32_t>{0,0}) set_os_patch_level(os_patch_level_[0],os_patch_level_[1]);
+        set_os_version(os_version_[0],os_version_[1],os_version_[2]);
+        set_os_patch_level(os_patch_level_[0],os_patch_level_[1]);
 
         name = args.get<string>("--name");
         name_size = name.size();
-        if (name_size > /*VENDOR_*/BOOT_NAME_SIZE) {
+        if (name_size > BOOT_NAME_SIZE) {
             print::err("Length of name of product cannot be bigger than 16 characters.");
             exit(1);
         }
@@ -401,6 +400,10 @@ namespace hdr {
         // vendor_boot
         wvboot(writables[1]);
     }
+    pair<const char*,size_t> vhdr(const function<pair<const char*,size_t>()> &hdr){ // looks studip but ok
+        print::inf("Building 'vendor_boot' header...");
+        return hdr();
+    }
     pair<const char*,size_t> vv3() {
         static vendor_boot_img_hdr_v3 boot_img_hdr;
         memcpy(boot_img_hdr.magic,VENDOR_BOOT_MAGIC,VENDOR_BOOT_MAGIC_SIZE);
@@ -434,7 +437,7 @@ namespace hdr {
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
     pair<const char*,size_t> v3(){
-        vendor_boot_img_hdr = vv3();
+        vendor_boot_img_hdr = vhdr(vv3);
         return _v3();
     }
 }
@@ -536,9 +539,9 @@ int main(const int argc, const char **argv) {
     .help("Relative or absolute output path of 'boot' image file")
     .metavar("<boot.img>")
     .default_value("");
-    parser.add_argument("-i","--print-id")
+    /*parser.add_argument("--print-id")
     .help("Print the generated ID (SHA1 checksum) of bootable")
-    .flag();
+    .flag();*/
 
     try { parser.parse_args(argc,argv); }
     catch (const exception &err) {
