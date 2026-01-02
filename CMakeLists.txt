@@ -4,15 +4,14 @@ project(GVATC)
 
 add_compile_options(-Wall -Wextra -Werror)
 
-add_library(gvatc SHARED libgvatc.cpp libgvatc_common.h)
+add_library(gvatc SHARED libgvatc_common.cpp libgvatc_common_print.hpp libgvatc_common_other.hpp libgvatc_abootimg_os_ver.cpp libgvatc_abootimg_os_ver_set.hpp libgvatc_abootimg_os_ver_get.hpp)
 
 # ----- TOOLS ----- #
-file(GLOB gabootimg gabootimg/*)
-add_executable(gabootimg ${gabootimg})
+add_executable(gabootimg gabootimg.cpp)
+add_executable(uabootimg uabootimg.cpp)
 
-target_link_libraries(gabootimg
-        PRIVATE gvatc
-)
+target_link_libraries(gabootimg PRIVATE gvatc)
+target_link_libraries(uabootimg PRIVATE gvatc)
 
 # ----- INSTA ----- #
 include(GNUInstallDirs)

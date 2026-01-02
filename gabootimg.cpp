@@ -1,11 +1,12 @@
-#define GVATC_TOOL_NAME "gabootimg"
-#define GVATC_TOOL_VERSION "2025.12.28"
+#define GVATC_TOOL_NAME    "gabootimg"
+#define GVATC_TOOL_VERSION "2026.01.02"
 
 #include <fstream>
 #include <cstring>
 #include <openssl/sha.h>
-#include "../libgvatc_common.h"
-#include "argparse/argparse.hpp"
+#include <argparse/argparse.hpp>
+#include "libgvatc_common_print.hpp"
+#include "libgvatc_abootimg_os_ver_set.hpp"
 #include "bootimg.h"
 
 using std::exception,std::function,std::stoi,std::hex,std::to_string,
@@ -15,21 +16,19 @@ using std::exception,std::function,std::stoi,std::hex,std::to_string,
       argparse::ArgumentParser,std::invalid_argument;
 
 constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
-constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384}; // default: 2048
+constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384};
 
 path         boot_output_path, vendor_boot_output_path,
              kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path;
 vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, pad;
-unsigned     kernel_addr,      ramdisk_addr,            dtb_addr,           tags_addr,           base_addr;
 uint32_t     kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
+             kernel_addr,      ramdisk_addr,            tags_addr,          base_addr,
              name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size,
-             header_version,   page_size,               os_version;
+             header_version,   page_size,               os_version;         uint64_t dtb_addr;
 string       name,             cmdline,                 extra_cmdline,      vendor_cmdline,      action;
 pair<const char*,size_t> boot_img_hdr,     vendor_boot_img_hdr;
 vector<uint32_t>         os_version_,      os_patch_level_;
 vector<ofstream>         writables;
-
-//unsigned get_pages_of_image(const unsigned &image_size) { return (image_size + page_size - 1) / page_size; }
 
 void pad_file(ofstream &file) { // I DONT LIKE IT
     pad_size = (page_size - (file.tellp() & (page_size - 1))) & (page_size - 1);
@@ -57,7 +56,7 @@ void read_file(const path &path,const string &what,uint32_t &size,vector<char> &
         exit(1);
     }
     ifstream file(path,ios::binary);
-    if (!file) {
+    if (!file.is_open()) {
         print::err("Failed to open this "+what+" file.");
         exit(1);
     }
@@ -68,33 +67,8 @@ void read_file(const path &path,const string &what,uint32_t &size,vector<char> &
     }
 }
 
-void set_os_version(const uint32_t &major,const uint32_t &minor,const uint32_t &patch) { // changed SetOsVersion
-    os_version &= ((1 << 11) - 1);
-    os_version |= (((major & 0x7f) << 25) | ((minor & 0x7f) << 18) | ((patch & 0x7f) << 11));
-}
-
-void set_os_patch_level(uint32_t &year,const uint32_t &month) { // changed SetOsPatchLevel
-    if (month > 12) {
-        print::err("Invalid month");
-        exit(1);
-    }
-    if (year < 2000 && month > 0) {
-        print::wrn("Note that year in OS patch level will be 2000.");
-        year = 0;
-    } else year -= 2000;
-
-    os_version &= ~((1 << 11) - 1);
-    os_version |= ((year & 0x7f) << 4) | ((month & 0xf) << 0);
-}
-
 namespace hdr {
     void bt_chck(const ArgumentParser &args) {
-        page_size = args.get<uint32_t>("--page-size");
-        if (find(page_sizes.begin(),page_sizes.end(),page_size) == page_sizes.end()) {
-            print::err("Invalid or unsupported page size. Only 2048, 4096, 8192, 16384 are available.");
-            exit(1);
-        }
-
         boot_output_path = args.get<string>("--boot-output");
         if (boot_output_path.empty()) {
             print::err("'boot' file output path must be specified.");
@@ -132,8 +106,8 @@ namespace hdr {
             print::err("Please, specify year and month integers in OS patch level argument.");
             exit(1);
         }
-        set_os_version(os_version_[0],os_version_[1],os_version_[2]);
-        set_os_patch_level(os_patch_level_[0],os_patch_level_[1]);
+        set_os_version(os_version,os_version_[0],os_version_[1],os_version_[2]);
+        set_os_patch_level(os_version,os_patch_level_[0],os_patch_level_[1]);
 
         name = args.get<string>("--name");
         name_size = name.size();
@@ -163,6 +137,11 @@ namespace hdr {
     }
 //// Check stage
     void cv0(const ArgumentParser &args) {
+        page_size = args.get<uint32_t>("--page-size");
+        if (find(page_sizes.begin(),page_sizes.end(),page_size) == page_sizes.end()) {
+            print::err("Invalid or unsupported page size. Only 2048, 4096, 8192, 16384 are available.");
+            exit(1);
+        }
         bt_chck(args);
         extra_cmdline = args.get<string>("--extra-cmdline");
         extra_cmdline_size = extra_cmdline.size();
@@ -258,10 +237,10 @@ namespace hdr {
         boot_img_hdr.os_version = os_version;
         memset(boot_img_hdr.name,0,BOOT_NAME_SIZE);
         memcpy(boot_img_hdr.name,name.c_str(),name_size);
-        memset(boot_img_hdr.cmdline, 0,BOOT_ARGS_SIZE);
+        memset(boot_img_hdr.cmdline,0,BOOT_ARGS_SIZE);
         memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
         //boot_img_hdr.id = id;
-        memset(boot_img_hdr.extra_cmdline, 0,BOOT_EXTRA_ARGS_SIZE);
+        memset(boot_img_hdr.extra_cmdline,0,BOOT_EXTRA_ARGS_SIZE);
         memcpy(boot_img_hdr.extra_cmdline,extra_cmdline.c_str(),extra_cmdline_size);
         //boot_img_hdr.recovery_dtbo_size = recovery_dtbo_size;
         //boot_img_hdr.recovery_dtbo_offset =
@@ -279,7 +258,7 @@ namespace hdr {
             print::err("Invalid DTB file path.");
             exit(1);
         }
-        set_addr(args.get<string>("--dtb-addr"),dtb_addr);
+        dtb_addr = stoi(args.get("--dtb-addr"),nullptr,16); // cant use set_addr
     }
     void cv2(const ArgumentParser &args) {
         cv1(args);
@@ -334,7 +313,7 @@ namespace hdr {
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
     void vbt_chck(const ArgumentParser &args) {
-        if (page_size != 4096) {
+        if (page_size != BOOT_IMAGE_HEADER_V34_PAGESIZE) {
             print::wrn("Note that at 3 header version page size is fixed at 4096.");
             page_size = 4096;
         }
@@ -400,9 +379,9 @@ namespace hdr {
         // vendor_boot
         wvboot(writables[1]);
     }
-    pair<const char*,size_t> vhdr(const function<pair<const char*,size_t>()> &hdr){ // looks studip but ok
+    pair<const char*,size_t> vhdr(const function<pair<const char*,size_t>()> &vhdr){ // looks studip but ok
         print::inf("Building 'vendor_boot' header...");
-        return hdr();
+        return vhdr();
     }
     pair<const char*,size_t> vv3() {
         static vendor_boot_img_hdr_v3 boot_img_hdr;
@@ -442,15 +421,17 @@ namespace hdr {
     }
 }
 
-const array<function<pair<const char*,size_t>()>,4> bldhdrs = {hdr::v0,hdr::v1,hdr::v2,hdr::v3,};
-const array<function<void(ArgumentParser&)>,4> chckhdrs = {hdr::cv0,hdr::cv1,hdr::cv2,hdr::cv3,};
-const array<function<void()>,4> rdhdrs = {hdr::rv0,hdr::rv1,hdr::rv2,hdr::rv3,};
-const array<function<void()>,4> opnfls = {hdr::ov0,hdr::ov1,hdr::ov2,hdr::ov3,};
-const array<function<void()>,4> wrthdrs = {hdr::wv0,hdr::wv1,hdr::wv2,hdr::wv3,};
+// suggested by AI
+constexpr array<pair<const char*,std::size_t>(*)(),4> bldhdrs = {hdr::v0, hdr::v1, hdr::v2, hdr::v3};
+constexpr array<void(*)(const ArgumentParser&),4> chckhdrs = {hdr::cv0, hdr::cv1, hdr::cv2, hdr::cv3};
+using nortrnfnc = array<void(*)(),4>;
+constexpr nortrnfnc rdhdrs = {hdr::rv0,hdr::rv1,hdr::rv2,hdr::rv3,};
+constexpr nortrnfnc opnfls = {hdr::ov0,hdr::ov1,hdr::ov2,hdr::ov3,};
+constexpr nortrnfnc wrthdrs = {hdr::wv0,hdr::wv1,hdr::wv2,hdr::wv3,};
 
-int main(const int argc, const char **argv) {
+int main(const int argc, char* const argv[]){
     ArgumentParser parser(GVATC_TOOL_NAME,GVATC_TOOL_VERSION);
-    parser.add_description(GVATC_TOOL_NAME" (Generate Android 'bootimg') - The lightweight and fast tool to manipulate Android bootable images.");
+    parser.add_description(GVATC_TOOL_NAME" (G.A.'bootimg') - The lightweight and fast tool to generate Android bootable images.");
     parser.add_epilog("Tool to create Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
                       "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
@@ -481,26 +462,26 @@ int main(const int argc, const char **argv) {
     .metavar("<(Compressed) CPIO>")
     .default_value("");
     parser.add_argument("-B","--start-addr")
-    .help("Use addresses arguments as offsets (-B + -K/R/D/t)")
+    .help("Use load addresses arguments as offsets (-B + -K/R/D/t)")
     .metavar("<0x0>")
     .default_value("0x10000000");
     parser.add_argument("-K","--kernel-addr")
-    .help("Set hexadecimal number of address of kernel image")
+    .help("Set hexadecimal number of load address of kernel image")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x00008000");
     parser.add_argument("-R","--ramdisk-addr")
-    .help("Set hexadecimal number of address of initramfs(s) image(s)")
+    .help("Set hexadecimal number of load address of ramdisk(s) image(s)")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x01000000");
     parser.add_argument("-D","--dtb-addr")
-    .help("Set hexadecimal number of address of Device Tree Blob")
+    .help("Set hexadecimal number of load address of Device Tree Blob")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x01f00000");
     parser.add_argument("-t","--tags-addr")
-    .help("Set hexadecimal number of address of kernel's tags")
+    .help("Set hexadecimal number of load address of kernel's tags")
     .metavar("<0x0>")
     //.scan<'x',unsigned>()
     .default_value("0x00000100");
