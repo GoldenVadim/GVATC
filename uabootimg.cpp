@@ -1,8 +1,9 @@
 #define GVATC_TOOL_NAME    "uabootimg"
-#define GVATC_TOOL_VERSION "2026.01.02"
+#define GVATC_TOOL_VERSION "2026.01.03"
 
 #include <fstream>
 #include <string_view>
+#include <unordered_map>
 #include "argparse/argparse.hpp"
 #include "libgvatc_common_print.hpp"
 #include "libgvatc_common_other.hpp"
@@ -10,8 +11,9 @@
 #include "bootimg.h"
 
 using argparse::ArgumentParser,std::invalid_argument,std::exception,std::to_string,std::string_view,
-      std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
-      std::vector,std::pair,std::ifstream,std::ofstream,std::ios,std::streamsize;
+      std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,std::filesystem::create_directories,
+      std::vector,std::pair,std::unordered_map,
+      std::ifstream,std::ofstream,std::ios,std::streamsize;
 
 uint32_t kernel_size,    ramdisk_size,  dtb_size, vendor_ramdisk_size, second_size, header_size, recovery_dtbo_size,
          kernel_addr,    ramdisk_addr,      tags_addr,          second_addr,
@@ -21,14 +23,15 @@ uint32_t kernel_size,    ramdisk_size,  dtb_size, vendor_ramdisk_size, second_si
          header_version, page_size,       os_version_patch_level, os_version, os_patch_level;
 uint64_t dtb_addr, recovery_dtbo_offset;
 pair<array<uint32_t,3>,array<uint32_t,2>> decoded_os_version;
-string   name,           cmdline,       extra_cmdline,      vendor_cmdline;
-constexpr size_t  uint32_t_size = sizeof(uint32_t);
-constexpr size_t  uint64_t_size = sizeof(uint64_t);
+string   name,           cmdline,       extra_cmdline,      vendor_cmdline, sha;
 path              image_path, directory_output_path;
-vector<char>      image_data, kernel_data, ramdisk_data, cmdline_data;
+vector<char>      image_data, buffer, cmdline_data;
 streamsize        image_size;
-array<char,17>    name_data;  array<char,1025> extra_cmdline_data;
+array<char,BOOT_NAME_SIZE>    name_data;
+array<char,BOOT_EXTRA_ARGS_SIZE> extra_cmdline_data; 
+array<char,32> sha_data;
 array<uint32_t,9> kernel_ramdisk_second_info;
+unordered_map<string,pair<unsigned,unsigned>> unpack_targets;
 ss_necessary_manipulations ss; string_view magic;
 
 unsigned get_number_of_pages(const unsigned &image_size) { return (image_size + page_size - 1) / page_size; }
@@ -41,103 +44,147 @@ void decode_os_version(){
 }
 
 namespace hdr {
-    void ohdr0(){
-        print::inf("Kernel size: "+         to_string(kernel_size));
-        ss.hexize(kernel_addr);
-        print::inf("Kernel load address: "+ ss.ss.str());
-        print::inf("RAMdisk size: "+        to_string(ramdisk_size));
-        ss.hexize(ramdisk_addr);
-        print::inf("RAMdisk load address: "+ss.ss.str());
-        print::inf("second size: "+         to_string(second_size));
-        ss.hexize(second_addr);
-        print::inf("second load address: "+ ss.ss.str());
-        ss.hexize(tags_addr);
-        print::inf("Tags load address: "+   ss.ss.str());
-        print::inf("Page size: "+           to_string(page_size));
-        print::inf("OS version: "+          ((decoded_os_version.first[0]!=0 || decoded_os_version.first[1]!=0 || decoded_os_version.first[2]!=0)
-                                             ? to_string(decoded_os_version.first[0])+'.'
-                                               +to_string(decoded_os_version.first[1])+'.'
-                                               +to_string(decoded_os_version.first[2])
-                                             : ""));
-        print::inf("OS patch level: "+      ss.os_pl(decoded_os_version.second[0],decoded_os_version.second[1]));
-        print::inf("Header version: "+      to_string(kernel_ramdisk_second_info[8]));
-        print::inf("Product name: "+        name);
-        print::inf("Command line: "+        cmdline);
-        print::inf("Additional cmdline: "+  extra_cmdline);
+    void e_base(){
+        kernel_pages   = get_number_of_pages(kernel_size);
+        kernel_offset  = page_size * 1;
+        unpack_targets["kernel"] = pair<unsigned,unsigned>{kernel_offset,kernel_size};
+        ramdisk_pages  = get_number_of_pages(ramdisk_size);
+        ramdisk_offset = page_size * (1 + kernel_pages);
+        unpack_targets["ramdisk"] = pair<unsigned,unsigned>{ramdisk_offset,ramdisk_size};
     }
-    void bhdr0(ifstream &image){
-        kernel_size = kernel_ramdisk_second_info[0];
-        kernel_addr = kernel_ramdisk_second_info[1];
+    void o_base_size(){
+        print::inf("* Kernel size: "+ to_string(kernel_size));
+        print::inf("* RAMdisk size: "+to_string(ramdisk_size));
+    }
+    void o_os_ver(){
+        print::inf("* OS version: "+    ((decoded_os_version.first[0]!=0 || decoded_os_version.first[1]!=0 || decoded_os_version.first[2]!=0)
+                                         ? to_string(decoded_os_version.first[0])+'.'
+                                           +to_string(decoded_os_version.first[1])+'.'
+                                           +to_string(decoded_os_version.first[2])
+                                         : ""));
+        print::inf("* OS patch level: "+ss.os_pl(decoded_os_version.second[0],decoded_os_version.second[1]));
+    }
+    void o_hdr(){
+        print::inf("* Header version: "+to_string(kernel_ramdisk_second_info[8]));
+    }
+    void o_cmdline(){
+        print::inf("* Command line: "+cmdline);
+    }
+    void bohdr0(){
+        o_base_size();
+        ss.hexize(kernel_addr);
+        print::inf("* Kernel load address: "+ ss.ss.str());
+        ss.hexize(ramdisk_addr);
+        print::inf("* RAMdisk load address: "+ss.ss.str());
+        print::inf("* second size: "+         to_string(second_size));
+        ss.hexize(second_addr);
+        print::inf("* second load address: "+ ss.ss.str());
+        ss.hexize(tags_addr);
+        print::inf("* Tags load address: "+   ss.ss.str());
+        ss.hexize(page_size); // unpack_bootimg shows page size as hexadecimal
+        print::inf("* Page size: "+           to_string(page_size)+" ("+ss.ss.str()+")");
+        o_os_ver();
+        o_hdr();
+        print::inf("* Product name: "+        name);
+        o_cmdline();
+        print::inf("* Additional cmdline: "+  extra_cmdline);
+    }
+    void brhdr0(ifstream &image){
+        kernel_size  = kernel_ramdisk_second_info[0];
+        kernel_addr  = kernel_ramdisk_second_info[1];
         ramdisk_size = kernel_ramdisk_second_info[2];
         ramdisk_addr = kernel_ramdisk_second_info[3];
-        second_size = kernel_ramdisk_second_info[4];
-        second_addr = kernel_ramdisk_second_info[5];
-        tags_addr = kernel_ramdisk_second_info[6];
-        page_size = kernel_ramdisk_second_info[7];
-        image.read(reinterpret_cast<char*>(&os_version_patch_level),uint32_t_size);
+        second_size  = kernel_ramdisk_second_info[4];
+        second_addr  = kernel_ramdisk_second_info[5];
+        tags_addr    = kernel_ramdisk_second_info[6];
+        page_size    = kernel_ramdisk_second_info[7];
+        image.read(reinterpret_cast<char*>(&os_version_patch_level),4);
         decode_os_version();
         image.read(name_data.data(),16);
         name = name_data.data();
-        cmdline_data.resize(512);
-        image.seekg(32,ios::cur); // ignore SHA; instead of image.read(32)!
-        image.read(extra_cmdline_data.data(),1025);
+        cmdline_data.resize(513);
+        image.read(cmdline_data.data(),512);
+        cmdline = cmdline_data.data();
+        //image.seekg(32,ios::cur); // ignore SHA;
+        image.read(sha_data.data(),32);
+        sha = sha_data.data();
+        image.read(extra_cmdline_data.data(),1024);
         extra_cmdline = extra_cmdline_data.data();
     }
-    // ehdr0
-    void ohdr1(){
-        ohdr0();
-        print::inf("Recovery DTBO size: "+  to_string(recovery_dtbo_size));
+    void behdr0(){
+        e_base();
+        if (second_size > 0){
+            second_offset = page_size * (1 + kernel_pages + ramdisk_pages);
+            unpack_targets["second"] = pair<unsigned,unsigned>{second_offset,second_size};
+        }
+    }
+    void bohdr1(){
+        bohdr0();
+        print::inf("* Recovery DTBO size: "+  to_string(recovery_dtbo_size));
         ss.hexize(recovery_dtbo_offset);
-        print::inf("Recovery DTBO offset: "+ss.ss.str());
-        print::inf("Header size: "+         to_string(header_size));
+        print::inf("* Recovery DTBO offset: "+ss.ss.str());
+        print::inf("* Header size: "+         to_string(header_size));
     }
-    void bhdr1(ifstream &image){
-        bhdr0(image);
-        image.read(reinterpret_cast<char*>(&recovery_dtbo_size),uint32_t_size);
-        image.read(reinterpret_cast<char*>(&recovery_dtbo_offset),uint64_t_size);
-        //image.read(reinterpret_cast<char*>(&header_size),uint32_t_size);
-        header_size = BOOT_IMAGE_HEADER_V1_SIZE; // when reading from file it will be 0
+    void brhdr1(ifstream &image){
+        brhdr0(image);
+        image.read(reinterpret_cast<char*>(&recovery_dtbo_size),4);
+        image.read(reinterpret_cast<char*>(&recovery_dtbo_offset),8);
+        //header_size = BOOT_IMAGE_HEADER_V1_SIZE;
+        image.read(reinterpret_cast<char*>(&header_size),4);
     }
-    // ehdr1
-    void ohdr2(){
-        ohdr1();
-        print::inf("Device Tree Blob size: "+to_string(dtb_size));
+    void behdr1(){
+        behdr0();
+        if (recovery_dtbo_size > 0)
+        unpack_targets["recovery_dtbo"] = pair<unsigned,unsigned>{recovery_dtbo_offset,recovery_dtbo_size};
+    }
+    void bohdr2(){
+        bohdr1();
+        print::inf("* Device Tree Blob size: "+to_string(dtb_size));
         ss.hexize(dtb_addr);
-        print::inf("DTB address: "+          ss.ss.str());
+        print::inf("* DTB load address: "+          ss.ss.str());
     }
-    void bhdr2(ifstream &image){
-        bhdr1(image);
-        image.read(reinterpret_cast<char*>(&dtb_size),uint32_t_size);
-        image.read(reinterpret_cast<char*>(&dtb_addr),uint64_t_size);
+    void brhdr2(ifstream &image){
+        brhdr1(image);
+        image.read(reinterpret_cast<char*>(&dtb_size),4);
+        image.read(reinterpret_cast<char*>(&dtb_addr),8);
     }
-    // ehdr2
-    void ohdr3(){
-
+    void behdr2(){
+        behdr1();
+        second_pages = get_number_of_pages(second_size);
+        recovery_dtbo_pages = get_number_of_pages(recovery_dtbo_size);
+        dtb_offset = page_size * (1 + kernel_pages + ramdisk_pages + second_pages + recovery_dtbo_pages);
+        unpack_targets["dtb"] = pair<unsigned,unsigned>{dtb_offset,dtb_size};
     }
-    void bhdr3(ifstream &image){
+    void bohdr3(){
+        o_base_size();
+        o_os_ver();
+        o_hdr();
+        o_cmdline();
+    }
+    void brhdr3(ifstream &image){
         kernel_size = kernel_ramdisk_second_info[0];
         ramdisk_size = kernel_ramdisk_second_info[1];
         os_version_patch_level = kernel_ramdisk_second_info[2];
         decode_os_version();
         // second_size = 0
         page_size = BOOT_IMAGE_HEADER_V34_PAGESIZE;
-        cmdline_data.resize(v34_BOOT_ARGS_SIZE+1);
+        cmdline_data.resize(v34_BOOT_ARGS_SIZE);
         image.read(cmdline_data.data(),v34_BOOT_ARGS_SIZE);
         cmdline = cmdline_data.data();
     }
-    constexpr array<void(*)(ifstream&),4> bhdrs = {hdr::bhdr0,hdr::bhdr1,hdr::bhdr2,hdr::bhdr3,};
-    constexpr array<void(*)(),4>          ohdrs = {hdr::ohdr0,hdr::ohdr1,hdr::ohdr2,hdr::ohdr3,};
-    //constexpr array<void(*)(ifstream&),2>          ehdrs = {hdr::ehdr0,hdr::ehdr1,hdr::ehdr2,hdr::ehdr3,};
+    void behdr3(){
+        e_base();
+    }
+    constexpr array<void(*)(ifstream&),4> brhdrs = {hdr::brhdr0,hdr::brhdr1,hdr::brhdr2,hdr::brhdr3,};
+    using nortrnfnc = array<void(*)(),4>;
+    constexpr nortrnfnc                   bohdrs = {hdr::bohdr0,hdr::bohdr1,hdr::bohdr2,hdr::bohdr3,};
+    constexpr nortrnfnc                   behdrs = {hdr::behdr0,hdr::behdr1,hdr::behdr2,hdr::behdr3,};
     void bhdr(ifstream &image,const ArgumentParser &args){
         image_data.resize(image_size);
         image.read(reinterpret_cast<char*>(kernel_ramdisk_second_info.data()),36);
-        bhdrs[kernel_ramdisk_second_info[8]](image);
-        if (!args.get<bool>("--header-only")){
-            //ehdrs[kernel_ramdisk_second_info[8]]();
-        }
-        if (!args.get<bool>("--quiet")){
-            ohdrs[kernel_ramdisk_second_info[8]]();
-        }
+        brhdrs[kernel_ramdisk_second_info[8]](image);
+        if (!args.get<bool>("--quiet")) bohdrs[kernel_ramdisk_second_info[8]]();
+        image.close();
     }
 }
 
@@ -151,50 +198,90 @@ int main(const int argc, const char **argv) {
     .help("Path to Android bootable image.")
     .metavar("<ANDROID!/VNDRBOOT>")
     .required();
+    parser.add_argument("-o","--output-dir")
+    .help("Path to output directory of files used in image (kernel, ramdisk, dtb, bootconfig, recovery dtbo and second)")
+    .metavar("<DIR>")
+    .default_value("");
     parser.add_argument("-H","--header-only")
     .help("Only give header information and don't extract files from image.")
     .flag();
     parser.add_argument("-q","--quiet")
-    .help("Don't write header information to stdout from image. Conflicts with --header-only")
+    .help("Don't write header information to stdout from image.")
     .flag();
-    parser.add_argument("-o","--output-dir")
-    .help("Path to output directory of files used in image (kernel, ramdisk, dtb, bootconfig, recovery dtbo and second)")
-    .metavar("<DIR>")
-    .required();
+    parser.add_argument("-c","--command-args")
+    .help("Write gabootimg command arguments based on header information.")
+    .flag();
+    parser.add_argument("--long-args")
+    .help("Use long gabootimg command arguments flags instead of short.")
+    .flag();
+    parser.add_argument("--mkbootimg")
+    .help("Also write command arguments for mkbootimg.")
+    .flag();
 
-    try { parser.parse_args(argc,argv); }
+    try { 
+        parser.parse_args(argc,argv);
+
+        print::inf("Checking arguments...");
+        image_path = parser.get<string>("--image");
+        if (!exists(image_path)){
+            print::err("Invalid bootable image path.");
+            return 1;
+        }
+
+        if (!parser.get<bool>("--header-only")){
+            directory_output_path = parser.get<string>("--output-dir");
+            if (directory_output_path.empty()){
+                print::err("Directory of output path must not be empty");
+                return 1;
+            }
+        }
+
+        print::inf("Reading image...");
+        image_size = file_size(image_path);
+        if (image_size == 0) {
+            print::err("This file is empty.");
+            return 1;
+        }
+        ifstream image(image_path,ios::binary);
+        if (!image.is_open()) {
+            print::err("Failed to open this file.");
+            return 1;
+        }
+
+        image_data.resize(BOOT_MAGIC_SIZE);
+        image.read(image_data.data(),BOOT_MAGIC_SIZE);
+        magic = string_view(image_data.data(),BOOT_MAGIC_SIZE);
+        if (magic==BOOT_MAGIC){
+            hdr::bhdr(image,parser);
+            if (!directory_output_path.empty()){
+                hdr::behdrs[kernel_ramdisk_second_info[8]]();
+                create_directories(directory_output_path);
+                for (const pair<const string,pair<unsigned,unsigned>> &target : unpack_targets){
+                    path temp;
+                    temp = directory_output_path;
+                    temp /= target.first;
+                    ofstream file(temp);
+                    if (!file.is_open()){
+                        print::err("Failed to extract "+target.first);
+                        exit(1);
+                    }
+                    image.seekg(target.second.first); // *_offset
+                    buffer.resize(target.second.second); // *_size
+                    image.read(buffer.data(),target.second.second);
+                    file.write(buffer.data(),target.second.second);
+                    buffer.clear();
+                    file.close();
+                }
+            }
+        } /*else if (magic==VENDOR_BOOT_MAGIC){
+            hdr::vbhdr(image,parser);
+        }*/else {
+            print::err("Invalid magic.");
+            return 1;
+        }
+    }
     catch (const exception &err) {
         print::err(err.what());
-        return 1;
-    }
-
-    print::inf("Checking arguments...");
-    image_path = parser.get<string>("--image");
-    if (!exists(image_path)){
-        print::err("Invalid bootable image path.");
-        return 1;
-    }
-
-    print::inf("Reading image...");
-    image_size = file_size(image_path);
-    if (image_size == 0) {
-        print::err("This file is empty.");
-        return 1;
-    }
-    ifstream image(image_path,ios::binary);
-    if (!image.is_open()) {
-        print::err("Failed to open this file.");
-        return 1;
-    }
-    image_data.resize(BOOT_MAGIC_SIZE);
-    image.read(image_data.data(),BOOT_MAGIC_SIZE);
-    magic = string_view(image_data.data(),BOOT_MAGIC_SIZE);
-    if (magic==BOOT_MAGIC){
-        hdr::bhdr(image,parser);
-    } /*else if (magic==VENDOR_BOOT_MAGIC){
-        hdr::vbhdr(image,parser);
-    }*/else {
-        print::err("Invalid magic.");
         return 1;
     }
 

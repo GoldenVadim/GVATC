@@ -1,5 +1,5 @@
 #define GVATC_TOOL_NAME    "gabootimg"
-#define GVATC_TOOL_VERSION "2026.01.02"
+#define GVATC_TOOL_VERSION "2026.01.03"
 
 #include <fstream>
 #include <cstring>
@@ -524,31 +524,33 @@ int main(const int argc, char* const argv[]){
     .help("Print the generated ID (SHA1 checksum) of bootable")
     .flag();*/
 
-    try { parser.parse_args(argc,argv); }
+    try { 
+        parser.parse_args(argc,argv);
+    
+        print::inf("Checking arguments...");
+        header_version = parser.get<unsigned>("--header-version");
+        if (header_version > header_versions.size()-1) {
+            print::err("Invalid header version. Only 0, 1, 2, 3 are available.");
+            return 1;
+        }
+        print::inf("Header version: "+to_string(header_version));
+
+        chckhdrs[header_version](parser);
+
+        print::inf("Reading required files...");
+        rdhdrs[header_version]();
+
+        print::inf("Building 'boot' header...");
+        boot_img_hdr = bldhdrs[header_version]();
+
+        print::inf("Writing data...");
+        opnfls[header_version]();
+        wrthdrs[header_version]();
+    }
     catch (const exception &err) {
         print::err(err.what());
         return 1;
     }
-
-    print::inf("Checking arguments...");
-    header_version = parser.get<unsigned>("--header-version");
-    if (header_version > header_versions.size()-1) {
-        print::err("Invalid header version. Only 0, 1, 2, 3 are available.");
-        return 1;
-    }
-    print::inf("Header version: "+to_string(header_version));
-
-    chckhdrs[header_version](parser);
-
-    print::inf("Reading required files...");
-    rdhdrs[header_version]();
-
-    print::inf("Building 'boot' header...");
-    boot_img_hdr = bldhdrs[header_version]();
-
-    print::inf("Writing data...");
-    opnfls[header_version]();
-    wrthdrs[header_version]();
 
     print::inf("Successfully created bootable.");
     return 0;
