@@ -1,5 +1,5 @@
 #define GVATC_TOOL_NAME    "uabootimg"
-#define GVATC_TOOL_VERSION "2026.01.03"
+#define GVATC_TOOL_VERSION "2026.01.04"
 
 #include <fstream>
 #include <string_view>
@@ -23,7 +23,7 @@ uint32_t kernel_size,    ramdisk_size,  dtb_size, vendor_ramdisk_size, second_si
          header_version, page_size,       os_version_patch_level, os_version, os_patch_level;
 uint64_t dtb_addr, recovery_dtbo_offset;
 pair<array<uint32_t,3>,array<uint32_t,2>> decoded_os_version;
-string   name,           cmdline,       extra_cmdline,      vendor_cmdline, sha;
+string   name,           cmdline,       extra_cmdline,      vendor_cmdline, sha, args;
 path              image_path, directory_output_path;
 vector<char>      image_data, buffer, cmdline_data;
 streamsize        image_size;
@@ -44,6 +44,12 @@ void decode_os_version(){
 }
 
 namespace hdr {
+    void o_base_size(){
+        print::inf("* Kernel size: "+ to_string(kernel_size));
+        print::inf("* RAMdisk size: "+to_string(ramdisk_size));
+    }
+    void o_a_s_base(){}
+    void o_a_l_base(){}
     void e_base(){
         kernel_pages   = get_number_of_pages(kernel_size);
         kernel_offset  = page_size * 1;
@@ -51,10 +57,6 @@ namespace hdr {
         ramdisk_pages  = get_number_of_pages(ramdisk_size);
         ramdisk_offset = page_size * (1 + kernel_pages);
         unpack_targets["ramdisk"] = pair<unsigned,unsigned>{ramdisk_offset,ramdisk_size};
-    }
-    void o_base_size(){
-        print::inf("* Kernel size: "+ to_string(kernel_size));
-        print::inf("* RAMdisk size: "+to_string(ramdisk_size));
     }
     void o_os_ver(){
         print::inf("* OS version: "+    ((decoded_os_version.first[0]!=0 || decoded_os_version.first[1]!=0 || decoded_os_version.first[2]!=0)
@@ -166,7 +168,6 @@ namespace hdr {
         ramdisk_size = kernel_ramdisk_second_info[1];
         os_version_patch_level = kernel_ramdisk_second_info[2];
         decode_os_version();
-        // second_size = 0
         page_size = BOOT_IMAGE_HEADER_V34_PAGESIZE;
         cmdline_data.resize(v34_BOOT_ARGS_SIZE);
         image.read(cmdline_data.data(),v34_BOOT_ARGS_SIZE);
@@ -178,13 +179,16 @@ namespace hdr {
     constexpr array<void(*)(ifstream&),4> brhdrs = {hdr::brhdr0,hdr::brhdr1,hdr::brhdr2,hdr::brhdr3,};
     using nortrnfnc = array<void(*)(),4>;
     constexpr nortrnfnc                   bohdrs = {hdr::bohdr0,hdr::bohdr1,hdr::bohdr2,hdr::bohdr3,};
+    //constexpr nortrnfnc                   boahdr = {hdr::boahdr0,hdr::boahdr1,hdr::boahdr2,hdr::boahdr3,};
     constexpr nortrnfnc                   behdrs = {hdr::behdr0,hdr::behdr1,hdr::behdr2,hdr::behdr3,};
     void bhdr(ifstream &image,const ArgumentParser &args){
         image_data.resize(image_size);
         image.read(reinterpret_cast<char*>(kernel_ramdisk_second_info.data()),36);
         brhdrs[kernel_ramdisk_second_info[8]](image);
-        if (!args.get<bool>("--quiet")) bohdrs[kernel_ramdisk_second_info[8]]();
-        image.close();
+        if (!args.get<bool>("--quiet")){
+            bohdrs[kernel_ramdisk_second_info[8]]();
+            //boahdr[kernel_ramdisk_second_info[8]]();
+        }
     }
 }
 
@@ -279,6 +283,7 @@ int main(const int argc, const char **argv) {
             print::err("Invalid magic.");
             return 1;
         }
+        image.close();
     }
     catch (const exception &err) {
         print::err(err.what());
