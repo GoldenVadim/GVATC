@@ -1,0 +1,1 @@
+extern const char GVATC_VERSION[11];

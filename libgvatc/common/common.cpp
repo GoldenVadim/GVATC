@@ -1,9 +1,9 @@
 #include <iostream>
 #include <cstdint>
 #include <iomanip>
-#include "termcolor/termcolor.hpp"
-#include "libgvatc_common_print.hpp"
-#include "libgvatc_common_other.hpp"
+#include <termcolor/termcolor.hpp>
+#include "print.hpp"
+#include "other.hpp"
 
 using termcolor::bright_red,termcolor::reset,termcolor::bright_yellow,
       std::setfill,std::setw,

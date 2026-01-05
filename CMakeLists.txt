@@ -4,18 +4,20 @@ project(GVATC)
 
 add_compile_options(-Wall -Wextra -Werror)
 
-add_library(gvatc SHARED libgvatc_common.cpp libgvatc_common_print.hpp libgvatc_common_other.hpp libgvatc_abootimg_os_ver.cpp libgvatc_abootimg_os_ver_set.hpp libgvatc_abootimg_os_ver_get.hpp)
+file(GLOB common libgvatc/common/*)
+file(GLOB abootimg libgvatc/abootimg/*)
+add_library(gvatc SHARED libgvatc/libgvatc.cpp gvatc.hpp ${common} ${abootimg})
 
 # ----- TOOLS ----- #
-add_executable(gabootimg gabootimg.cpp)
-add_executable(uabootimg uabootimg.cpp)
+file(GLOB gabootimg gabootimg/*)
+add_executable(gabootimg ${gabootimg})
+add_executable(uabootimg uabootimg/main.cpp)
 
 target_link_libraries(gabootimg PRIVATE gvatc)
 target_link_libraries(uabootimg PRIVATE gvatc)
 
 # ----- INSTA ----- #
 include(GNUInstallDirs)
-install(TARGETS gvatc gabootimg
+install(TARGETS gvatc gabootimg uabootimg
         RUNTIME DESTINATION bin
-        LIBRARY DESTINATION lib
-        ARCHIVE DESTINATION lib)
+        LIBRARY DESTINATION lib)

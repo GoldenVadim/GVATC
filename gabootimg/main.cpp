@@ -1,12 +1,14 @@
-#define GVATC_TOOL_NAME    "gabootimg"
-#define GVATC_TOOL_VERSION "2026.01.03"
+#define GVATC_TOOL_NAME "gabootimg (G.A.'bootimg')"
 
 #include <fstream>
 #include <cstring>
-#include <openssl/sha.h>
+/*#include <openssl/evp.h>
+#include <openssl/err.h>*/
 #include <argparse/argparse.hpp>
-#include "libgvatc_common_print.hpp"
-#include "libgvatc_abootimg_os_ver_set.hpp"
+#include "../gvatc.hpp"
+#include "../libgvatc/common/print.hpp"
+#include "../libgvatc/abootimg/os_ver_set.hpp"
+#include "../libgvatc/abootimg/pages.hpp"
 #include "bootimg.h"
 
 using std::exception,std::function,std::stoi,std::hex,std::to_string,
@@ -19,12 +21,12 @@ constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
 constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384};
 
 path         boot_output_path, vendor_boot_output_path,
-             kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path;
-vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, pad;
-uint32_t     kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size,
-             kernel_addr,      ramdisk_addr,            tags_addr,          base_addr,
+             kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path, recovery_dtbo_path, second_path;
+vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, recovery_dtbo_data, second_data, pad;
+uint32_t     kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size, recovery_dtbo_size, second_size,
+             kernel_addr,      ramdisk_addr,            tags_addr,           /*ramdisk_addr,*/   recovery_dtbo_addr, second_addr, base_addr,
              name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size,
-             header_version,   page_size,               os_version;         uint64_t dtb_addr;
+             header_version,   page_size,               os_version;         uint64_t dtb_addr; //unsigned char id[EVP_MAX_MD_SIZE];
 string       name,             cmdline,                 extra_cmdline,      vendor_cmdline,      action;
 pair<const char*,size_t> boot_img_hdr,     vendor_boot_img_hdr;
 vector<uint32_t>         os_version_,      os_patch_level_;
@@ -44,9 +46,12 @@ void set_addr(const string &addr_str,unsigned &addr) {
     }
 }
 
-/*void check_file_arg(const string &path,const string &what,const ArgumentParser args,string &var) {
-
-}*/
+uint64_t get_recovery_dtbo_offset(){
+    number_of_pages pages(page_size);
+    return page_size * (1 + pages.get(kernel_size)
+                          + pages.get(ramdisk_size)
+                          + pages.get(second_size));
+}
 
 void read_file(const path &path,const string &what,uint32_t &size,vector<char> &buffer) {
     print::inf("Reading "+what+" file...");
@@ -145,7 +150,13 @@ namespace hdr {
         bt_chck(args);
         extra_cmdline = args.get<string>("--extra-cmdline");
         extra_cmdline_size = extra_cmdline.size();
-        //second_path =
+        second_path = args.get<string>("--second");
+        if (!second_path.empty()){
+            if (!exists(second_path)){
+                print::err("Invalid second bootloader file path.");
+                exit(1);
+            } else set_addr(args.get<string>("--second-addr"),second_addr);
+        } 
     }
 //// Read stage
     void rd_base() {
@@ -154,14 +165,11 @@ namespace hdr {
     }
     void rv0() {
         rd_base();
-        //rd_scnd();
+        if (!second_path.empty()) read_file(second_path,"second",second_size,second_data);
     }
 //// Open stage
-    void oboot() {
-        writables.emplace_back(boot_output_path,ios::binary);
-    }
     void ov0() {
-        oboot();
+        writables.emplace_back(boot_output_path,ios::binary);
     }
 //// Write stage  
     void wboot(ofstream &writable) {
@@ -176,7 +184,8 @@ namespace hdr {
     }
     void wv0() {
         wboot(writables[0]);
-        //writables[0].write(second_data,second_size);
+        writables[0].write(second_data.data(),second_size);
+        pad_file(writables[0]);
     }
     pair<const char*,size_t> v0() {
         static boot_img_hdr_v0 boot_img_hdr;
@@ -185,8 +194,8 @@ namespace hdr {
         boot_img_hdr.kernel_addr = kernel_addr;
         boot_img_hdr.ramdisk_size = ramdisk_size;
         boot_img_hdr.ramdisk_addr = ramdisk_addr;
-        boot_img_hdr.second_size = 0;
-        boot_img_hdr.second_addr = 0x0;
+        boot_img_hdr.second_size = second_size;
+        boot_img_hdr.second_addr = second_addr;
         boot_img_hdr.tags_addr = tags_addr;
         boot_img_hdr.page_size = page_size;
         boot_img_hdr.header_version = header_version;
@@ -201,16 +210,18 @@ namespace hdr {
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
 //// Check stage
-    //void rcvrdtbo_chck() {}
     void cv1(const ArgumentParser &args) {
         cv0(args);
-        //recovery_dtbo_path =
-        //rcvrdtbo_chck();
+        recovery_dtbo_path = args.get<string>("--recovery-dtbo");
+        if (!recovery_dtbo_path.empty() && !exists(recovery_dtbo_path)) {
+            print::err("Invalid recovery DTBO file path.");
+            exit(1);
+        }
     }
 //// Read stage
     void rv1() {
         rv0();
-        //rd_rcvrdtbo();
+        if (!recovery_dtbo_path.empty()) read_file(recovery_dtbo_path,"recovery DTBO",recovery_dtbo_size,recovery_dtbo_data);
     }
 //// Open stage 
     void ov1() {
@@ -219,8 +230,8 @@ namespace hdr {
 //// Write stage 
     void wv1() {
         wv0();
-        //writables[0].write(recovery_dtbo_data,recovery_dtbo_size);
-        //pad_file(writables[0])
+        writables[0].write(recovery_dtbo_data.data(),recovery_dtbo_size);
+        pad_file(writables[0]);
     }
     pair<const char*,size_t> v1() {
         static boot_img_hdr_v1 boot_img_hdr;
@@ -229,8 +240,8 @@ namespace hdr {
         boot_img_hdr.kernel_addr = kernel_addr;
         boot_img_hdr.ramdisk_size = ramdisk_size;
         boot_img_hdr.ramdisk_addr = ramdisk_addr;
-        boot_img_hdr.second_size = 0;
-        boot_img_hdr.second_addr = 0x0;
+        boot_img_hdr.second_size = second_size;
+        boot_img_hdr.second_addr = second_addr;
         boot_img_hdr.tags_addr = tags_addr;
         boot_img_hdr.page_size = page_size;
         boot_img_hdr.header_version = header_version;
@@ -242,8 +253,8 @@ namespace hdr {
         //boot_img_hdr.id = id;
         memset(boot_img_hdr.extra_cmdline,0,BOOT_EXTRA_ARGS_SIZE);
         memcpy(boot_img_hdr.extra_cmdline,extra_cmdline.c_str(),extra_cmdline_size);
-        //boot_img_hdr.recovery_dtbo_size = recovery_dtbo_size;
-        //boot_img_hdr.recovery_dtbo_offset =
+        boot_img_hdr.recovery_dtbo_size = recovery_dtbo_size;
+        boot_img_hdr.recovery_dtbo_offset = get_recovery_dtbo_offset();
         boot_img_hdr.header_size = BOOT_IMAGE_HEADER_V1_SIZE;
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
@@ -292,8 +303,8 @@ namespace hdr {
         boot_img_hdr.kernel_addr = kernel_addr;
         boot_img_hdr.ramdisk_size = ramdisk_size;
         boot_img_hdr.ramdisk_addr = ramdisk_addr;
-        boot_img_hdr.second_size = 0;
-        boot_img_hdr.second_addr = 0x0;
+        boot_img_hdr.second_size = second_size;
+        boot_img_hdr.second_addr = second_addr;
         boot_img_hdr.tags_addr = tags_addr;
         boot_img_hdr.page_size = page_size;
         boot_img_hdr.header_version = header_version;
@@ -305,8 +316,8 @@ namespace hdr {
         //boot_img_hdr.id = id;
         memset(boot_img_hdr.extra_cmdline, 0,BOOT_EXTRA_ARGS_SIZE);
         memcpy(boot_img_hdr.extra_cmdline,extra_cmdline.c_str(),extra_cmdline_size);
-        //boot_img_hdr.recovery_dtbo_size = recovery_dtbo_size;
-        //boot_img_hdr.recovery_dtbo_offset =
+        boot_img_hdr.recovery_dtbo_size = recovery_dtbo_size;
+        boot_img_hdr.recovery_dtbo_offset = get_recovery_dtbo_offset();
         boot_img_hdr.header_size = BOOT_IMAGE_HEADER_V2_SIZE;
         boot_img_hdr.dtb_size = dtb_size;
         boot_img_hdr.dtb_addr = dtb_addr;
@@ -360,7 +371,7 @@ namespace hdr {
         writables.emplace_back(vendor_boot_output_path,ios::binary);
     }
     void ov3() {
-        oboot();
+        ov0();
         ovboot();
     }
 //// Write stage
@@ -402,7 +413,9 @@ namespace hdr {
         boot_img_hdr.dtb_addr = dtb_addr;
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
-    pair<const char*,size_t> _v3() {
+    pair<const char*,size_t> v3() {
+        vendor_boot_img_hdr = vhdr(vv3);
+
         static boot_img_hdr_v3 boot_img_hdr;
         memcpy(boot_img_hdr.magic,BOOT_MAGIC,BOOT_MAGIC_SIZE);
         boot_img_hdr.kernel_size = kernel_size;
@@ -415,13 +428,8 @@ namespace hdr {
         memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
-    pair<const char*,size_t> v3(){
-        vendor_boot_img_hdr = vhdr(vv3);
-        return _v3();
-    }
 }
 
-// suggested by AI
 constexpr array<pair<const char*,std::size_t>(*)(),4> bldhdrs = {hdr::v0, hdr::v1, hdr::v2, hdr::v3};
 constexpr array<void(*)(const ArgumentParser&),4> chckhdrs = {hdr::cv0, hdr::cv1, hdr::cv2, hdr::cv3};
 using nortrnfnc = array<void(*)(),4>;
@@ -430,8 +438,8 @@ constexpr nortrnfnc opnfls = {hdr::ov0,hdr::ov1,hdr::ov2,hdr::ov3,};
 constexpr nortrnfnc wrthdrs = {hdr::wv0,hdr::wv1,hdr::wv2,hdr::wv3,};
 
 int main(const int argc, char* const argv[]){
-    ArgumentParser parser(GVATC_TOOL_NAME,GVATC_TOOL_VERSION);
-    parser.add_description(GVATC_TOOL_NAME" (G.A.'bootimg') - The lightweight and fast tool to generate Android bootable images.");
+    ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
+    parser.add_description(GVATC_TOOL_NAME" - The lightweight and fast tool to generate Android bootable images.");
     parser.add_epilog("Tool to create Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
                       "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
@@ -449,6 +457,10 @@ int main(const int argc, char* const argv[]){
     .help("Add kernel (ACK/Linux) to Android 'boot'")
     .metavar("<Image(.gz-dtb)>")
     .default_value("");
+    parser.add_argument("-s","--second")
+    .help("Add optional secondary bootloader to 'boot'. Only for header versions before 3")
+    .metavar("<...>")
+    .default_value("");
     parser.add_argument("-r","--ramdisk")
     .help("Add initial RAM filesystem image to Android 'boot'")
     .metavar("<(Compressed) CPIO>")
@@ -456,6 +468,10 @@ int main(const int argc, char* const argv[]){
     parser.add_argument("-d","--dtb")
     .help("Add Device Tree Blob to Android 'boot' or 'vendor_boot'. DTB must be included in kernel file if using 0 header version")
     .metavar("<DTB>")
+    .default_value("");
+    parser.add_argument("--recovery-dtbo")
+    .help("Add optional recovery DTBO to 'boot'. Only for 1 & 2 header versions. The offset (or load address) of it will be calculated")
+    .metavar("<DTBO>")
     .default_value("");
     parser.add_argument("-i","--vendor-ramdisk")
     .help("Add vendor's initial RAM filesystem image to 'vendor_boot' (3+ header version only)")
@@ -468,22 +484,22 @@ int main(const int argc, char* const argv[]){
     parser.add_argument("-K","--kernel-addr")
     .help("Set hexadecimal number of load address of kernel image")
     .metavar("<0x0>")
-    //.scan<'x',unsigned>()
     .default_value("0x00008000");
     parser.add_argument("-R","--ramdisk-addr")
     .help("Set hexadecimal number of load address of ramdisk(s) image(s)")
     .metavar("<0x0>")
-    //.scan<'x',unsigned>()
     .default_value("0x01000000");
+    parser.add_argument("-S","--second-addr")
+    .help("Set hexadecimal number of load address of second bootloader")
+    .metavar("<0x0>")
+    .default_value("0x00f00000");
     parser.add_argument("-D","--dtb-addr")
     .help("Set hexadecimal number of load address of Device Tree Blob")
     .metavar("<0x0>")
-    //.scan<'x',unsigned>()
     .default_value("0x01f00000");
     parser.add_argument("-t","--tags-addr")
     .help("Set hexadecimal number of load address of kernel's tags")
     .metavar("<0x0>")
-    //.scan<'x',unsigned>()
     .default_value("0x00000100");
     parser.add_argument("-n","--name")
     .help("Set name of product (board) in bootable image")
@@ -510,7 +526,7 @@ int main(const int argc, char* const argv[]){
     .metavar("<console=ttyMSM0>")
     .default_value("");
     parser.add_argument("-l","--extra-cmdline")
-    .help("Set additional cmdline in 'boot'. Created for compatibility with older versions of mkbootimg. Not recommended to use. (0-2 header version only)")
+    .help("Set additional cmdline in 'boot'. Created for compatibility with older versions of mkbootimg. Not recommended to use. 0-2 header versions only")
     .default_value("");
     parser.add_argument("-O","--vendor-boot-output")
     .help("Path to output of 'vendor_boot' bootable image file")
@@ -519,7 +535,7 @@ int main(const int argc, char* const argv[]){
     parser.add_argument("-o","--boot-output")
     .help("Relative or absolute output path of 'boot' image file")
     .metavar("<boot.img>")
-    .default_value("");
+    .required();
     /*parser.add_argument("--print-id")
     .help("Print the generated ID (SHA1 checksum) of bootable")
     .flag();*/

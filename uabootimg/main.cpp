@@ -1,14 +1,15 @@
-#define GVATC_TOOL_NAME    "uabootimg"
-#define GVATC_TOOL_VERSION "2026.01.04"
+#define GVATC_TOOL_NAME "uabootimg (U.A.'bootimg')"
 
 #include <fstream>
 #include <string_view>
 #include <unordered_map>
-#include "argparse/argparse.hpp"
-#include "libgvatc_common_print.hpp"
-#include "libgvatc_common_other.hpp"
-#include "libgvatc_abootimg_os_ver_get.hpp"
-#include "bootimg.h"
+#include <argparse/argparse.hpp>
+#include "../gvatc.hpp"
+#include "../libgvatc/common/print.hpp"
+#include "../libgvatc/common/other.hpp"
+#include "../libgvatc/abootimg/pages.hpp"
+#include "../libgvatc/abootimg/os_ver_get.hpp"
+#include "../gabootimg/bootimg.h"
 
 using argparse::ArgumentParser,std::invalid_argument,std::exception,std::to_string,std::string_view,
       std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,std::filesystem::create_directories,
@@ -23,18 +24,16 @@ uint32_t kernel_size,    ramdisk_size,  dtb_size, vendor_ramdisk_size, second_si
          header_version, page_size,       os_version_patch_level, os_version, os_patch_level;
 uint64_t dtb_addr, recovery_dtbo_offset;
 pair<array<uint32_t,3>,array<uint32_t,2>> decoded_os_version;
-string   name,           cmdline,       extra_cmdline,      vendor_cmdline, sha, args;
+string   name,           cmdline,       extra_cmdline,      vendor_cmdline, args;// sha
 path              image_path, directory_output_path;
 vector<char>      image_data, buffer, cmdline_data;
 streamsize        image_size;
 array<char,BOOT_NAME_SIZE>    name_data;
 array<char,BOOT_EXTRA_ARGS_SIZE> extra_cmdline_data; 
-array<char,32> sha_data;
+//array<char,32> sha_data;
 array<uint32_t,9> kernel_ramdisk_second_info;
 unordered_map<string,pair<unsigned,unsigned>> unpack_targets;
-ss_necessary_manipulations ss; string_view magic;
-
-unsigned get_number_of_pages(const unsigned &image_size) { return (image_size + page_size - 1) / page_size; }
+ss_necessary_manipulations ss; string_view magic; number_of_pages pages(page_size);
 
 void decode_os_version(){
     os_version = os_version_patch_level >> 11;
@@ -51,10 +50,10 @@ namespace hdr {
     void o_a_s_base(){}
     void o_a_l_base(){}
     void e_base(){
-        kernel_pages   = get_number_of_pages(kernel_size);
+        kernel_pages   = pages.get(kernel_size);
         kernel_offset  = page_size * 1;
         unpack_targets["kernel"] = pair<unsigned,unsigned>{kernel_offset,kernel_size};
-        ramdisk_pages  = get_number_of_pages(ramdisk_size);
+        ramdisk_pages  = pages.get(ramdisk_size);
         ramdisk_offset = page_size * (1 + kernel_pages);
         unpack_targets["ramdisk"] = pair<unsigned,unsigned>{ramdisk_offset,ramdisk_size};
     }
@@ -89,6 +88,7 @@ namespace hdr {
         o_hdr();
         print::inf("* Product name: "+        name);
         o_cmdline();
+        //print::inf("* SHA checksum: "+        sha);
         print::inf("* Additional cmdline: "+  extra_cmdline);
     }
     void brhdr0(ifstream &image){
@@ -107,9 +107,9 @@ namespace hdr {
         cmdline_data.resize(513);
         image.read(cmdline_data.data(),512);
         cmdline = cmdline_data.data();
-        //image.seekg(32,ios::cur); // ignore SHA;
-        image.read(sha_data.data(),32);
-        sha = sha_data.data();
+        image.seekg(32,ios::cur); // ignore SHA;
+        //image.read(sha_data.data(),32);
+        //sha = sha_data.data();
         image.read(extra_cmdline_data.data(),1024);
         extra_cmdline = extra_cmdline_data.data();
     }
@@ -152,8 +152,8 @@ namespace hdr {
     }
     void behdr2(){
         behdr1();
-        second_pages = get_number_of_pages(second_size);
-        recovery_dtbo_pages = get_number_of_pages(recovery_dtbo_size);
+        second_pages = pages.get(second_size);
+        recovery_dtbo_pages = pages.get(recovery_dtbo_size);
         dtb_offset = page_size * (1 + kernel_pages + ramdisk_pages + second_pages + recovery_dtbo_pages);
         unpack_targets["dtb"] = pair<unsigned,unsigned>{dtb_offset,dtb_size};
     }
@@ -193,8 +193,8 @@ namespace hdr {
 }
 
 int main(const int argc, const char **argv) {
-    ArgumentParser parser(GVATC_TOOL_NAME,GVATC_TOOL_VERSION);
-    parser.add_description(GVATC_TOOL_NAME" (U.A.'bootimg') - The lightweight and fast tool to unpack Android bootable images.");
+    ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
+    parser.add_description(GVATC_TOOL_NAME" - The lightweight and fast tool to unpack Android bootable images.");
     parser.add_epilog("Tool to unpack Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
                       "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
@@ -212,7 +212,7 @@ int main(const int argc, const char **argv) {
     parser.add_argument("-q","--quiet")
     .help("Don't write header information to stdout from image.")
     .flag();
-    parser.add_argument("-c","--command-args")
+    /*parser.add_argument("-c","--command-args")
     .help("Write gabootimg command arguments based on header information.")
     .flag();
     parser.add_argument("--long-args")
@@ -220,7 +220,7 @@ int main(const int argc, const char **argv) {
     .flag();
     parser.add_argument("--mkbootimg")
     .help("Also write command arguments for mkbootimg.")
-    .flag();
+    .flag();*/
 
     try { 
         parser.parse_args(argc,argv);

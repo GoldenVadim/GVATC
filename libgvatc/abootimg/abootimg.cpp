@@ -1,7 +1,7 @@
-#include "libgvatc_common_print.hpp"
-#include "libgvatc_common_other.hpp"
-#include "libgvatc_abootimg_os_ver_set.hpp"
-#include "libgvatc_abootimg_os_ver_get.hpp"
+#include "../common/print.hpp"
+#include "pages.hpp"
+#include "os_ver_set.hpp"
+#include "os_ver_get.hpp"
 
 uint32_t major,minor,patch,
             year, month;
@@ -38,4 +38,8 @@ array<uint32_t,2> get_os_patch_level(uint32_t &os_version){
     year += 2000;
     month = os_version & ((1<<4) - 1);
     return array<uint32_t,2>{year,month};
+}
+
+unsigned number_of_pages::get(const unsigned &image_size) {
+    return (image_size + page_size - 1) / page_size;
 }
