@@ -2,8 +2,7 @@
 
 #include <fstream>
 #include <cstring>
-/*#include <openssl/evp.h>
-#include <openssl/err.h>*/
+//#include <openssl/evp.h>
 #include <argparse/argparse.hpp>
 #include "../gvatc.hpp"
 #include "../libgvatc/common/print.hpp"
@@ -14,7 +13,7 @@
 using std::exception,std::function,std::stoi,std::hex,std::to_string,
       std::array,std::vector,std::pair,std::find,std::memset,std::memcpy,
       std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
-      std::ifstream,std::ofstream,std::ios,
+      std::ifstream,std::ofstream,std::ios,std::streamsize,
       argparse::ArgumentParser,std::invalid_argument;
 
 constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
@@ -25,17 +24,18 @@ path         boot_output_path, vendor_boot_output_path,
 vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, recovery_dtbo_data, second_data, pad;
 uint32_t     kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size, recovery_dtbo_size, second_size,
              kernel_addr,      ramdisk_addr,            tags_addr,           /*ramdisk_addr,*/   recovery_dtbo_addr, second_addr, base_addr,
-             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size, pad_size,
-             header_version,   page_size,               os_version;         uint64_t dtb_addr; //unsigned char id[EVP_MAX_MD_SIZE];
+             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size,
+             header_version,   page_size,               os_version;         uint64_t dtb_addr; streamsize pad_size;//unsigned char id[EVP_MAX_MD_SIZE];
 string       name,             cmdline,                 extra_cmdline,      vendor_cmdline,      action;
-pair<const char*,size_t> boot_img_hdr,     vendor_boot_img_hdr;
-vector<uint32_t>         os_version_,      os_patch_level_;
-vector<ofstream>         writables;
+pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
+vector<uint32_t>             os_version_,  os_patch_level_;
+vector<ofstream>             writables;
 
-void pad_file(ofstream &file) { // I DONT LIKE IT
-    pad_size = (page_size - (file.tellp() & (page_size - 1))) & (page_size - 1);
+void write(ofstream &writable,const char *content,const streamsize &size) {
+    writable.write(content,size);
+    pad_size = (page_size - (writable.tellp() & (page_size - 1))) & (page_size - 1);
     pad.resize(pad_size);
-    file.write(pad.data(),pad_size);
+    writable.write(pad.data(),pad_size);
 }
 
 void set_addr(const string &addr_str,unsigned &addr) {
@@ -174,18 +174,14 @@ namespace hdr {
 //// Write stage  
     void wboot(ofstream &writable) {
         // hdr
-        writable.write(boot_img_hdr.first,boot_img_hdr.second);
-        pad_file(writable);
+        write(writable,boot_img_hdr.first,boot_img_hdr.second);
         // base
-        writable.write(kernel_data.data(),kernel_size);
-        pad_file(writable);
-        writable.write(ramdisk_data.data(),ramdisk_size);
-        pad_file(writable);
+        write(writable,kernel_data.data(),kernel_size);
+        write(writable,ramdisk_data.data(),ramdisk_size);
     }
     void wv0() {
         wboot(writables[0]);
-        writables[0].write(second_data.data(),second_size);
-        pad_file(writables[0]);
+        write(writables[0],second_data.data(),second_size);
     }
     pair<const char*,size_t> v0() {
         static boot_img_hdr_v0 boot_img_hdr;
@@ -230,8 +226,7 @@ namespace hdr {
 //// Write stage 
     void wv1() {
         wv0();
-        writables[0].write(recovery_dtbo_data.data(),recovery_dtbo_size);
-        pad_file(writables[0]);
+        write(writables[0],recovery_dtbo_data.data(),recovery_dtbo_size);
     }
     pair<const char*,size_t> v1() {
         static boot_img_hdr_v1 boot_img_hdr;
@@ -256,7 +251,7 @@ namespace hdr {
         boot_img_hdr.recovery_dtbo_size = recovery_dtbo_size;
         boot_img_hdr.recovery_dtbo_offset = get_recovery_dtbo_offset();
         boot_img_hdr.header_size = BOOT_IMAGE_HEADER_V1_SIZE;
-        return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
+        return {reinterpret_cast<const char*>(&boot_img_hdr),BOOT_IMAGE_HEADER_V1_SIZE};
     }
 //// Check stage
     void v234_dtb_chck(const ArgumentParser &args) {
@@ -289,8 +284,7 @@ namespace hdr {
     }
 //// Write stage
     void v234_wrt_dtb(ofstream &writable) {
-        writable.write(dtb_data.data(),dtb_size);
-        pad_file(writable);
+        write(writable,dtb_data.data(),dtb_size);
     }
     void wv2() {
         wv1();
@@ -321,13 +315,10 @@ namespace hdr {
         boot_img_hdr.header_size = BOOT_IMAGE_HEADER_V2_SIZE;
         boot_img_hdr.dtb_size = dtb_size;
         boot_img_hdr.dtb_addr = dtb_addr;
-        return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
+        return {reinterpret_cast<const char*>(&boot_img_hdr),BOOT_IMAGE_HEADER_V2_SIZE};
     }
     void vbt_chck(const ArgumentParser &args) {
-        if (page_size != BOOT_IMAGE_HEADER_V34_PAGESIZE) {
-            print::wrn("Note that at 3 header version page size is fixed at 4096.");
-            page_size = 4096;
-        }
+        page_size = BOOT_IMAGE_HEADER_V34_PAGESIZE;
 
         vendor_boot_output_path = args.get<string>("--vendor-boot-output");
         if (vendor_boot_output_path.empty()) {
@@ -357,8 +348,8 @@ namespace hdr {
     }
 //// Check stage
     void cv3(const ArgumentParser &args) {
-        bt_chck(args);
         vbt_chck(args);
+        bt_chck(args);
     }
 //// Read stage
     void rv3() {
@@ -377,11 +368,9 @@ namespace hdr {
 //// Write stage
     void wvboot(ofstream &writable) {
         // vhdr
-        writable.write(vendor_boot_img_hdr.first,vendor_boot_img_hdr.second);
-        pad_file(writable);
+        write(writable,vendor_boot_img_hdr.first,vendor_boot_img_hdr.second);
         // vbase
-        writable.write(vendor_ramdisk_data.data(),vendor_ramdisk_size);
-        pad_file(writable);
+        write(writable,vendor_ramdisk_data.data(),vendor_ramdisk_size);
         v234_wrt_dtb(writables[1]);
     }
     void wv3() {
@@ -411,7 +400,7 @@ namespace hdr {
         boot_img_hdr.header_size = VENDOR_BOOT_IMAGE_HEADER_V3_SIZE;
         boot_img_hdr.dtb_size = dtb_size;
         boot_img_hdr.dtb_addr = dtb_addr;
-        return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
+        return {reinterpret_cast<const char*>(&boot_img_hdr),VENDOR_BOOT_IMAGE_HEADER_V3_SIZE};
     }
     pair<const char*,size_t> v3() {
         vendor_boot_img_hdr = vhdr(vv3);
@@ -426,7 +415,7 @@ namespace hdr {
         boot_img_hdr.header_version = header_version;
         memset(boot_img_hdr.cmdline,0,v34_BOOT_ARGS_SIZE);
         memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
-        return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
+        return {reinterpret_cast<const char*>(&boot_img_hdr),BOOT_IMAGE_HEADER_V3_SIZE};
     }
 }
 
@@ -449,7 +438,7 @@ int main(const int argc, char* const argv[]){
     .scan<'i',unsigned>()
     .required();
     parser.add_argument("-p","--page-size")
-    .help("Specify the page size in Android bootable image")
+    .help("Specify the page size in Android bootable image. Note that page size in 3 & 4 header versions is fixed at 4096")
     .metavar("<2048/4096/8192/16384>")
     .scan<'i',unsigned>()
     .required();
