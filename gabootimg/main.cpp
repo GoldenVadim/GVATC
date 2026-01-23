@@ -31,13 +31,6 @@ pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
 vector<uint32_t>             os_version_,  os_patch_level_;
 vector<ofstream>             writables;
 
-void write(ofstream &writable,const char *content,const streamsize &size) {
-    writable.write(content,size);
-    pad_size = (page_size - (writable.tellp() & (page_size - 1))) & (page_size - 1);
-    pad.resize(pad_size);
-    writable.write(pad.data(),pad_size);
-}
-
 void set_addr(const string &addr_str,unsigned &addr) {
     try { addr = base_addr + stoi(addr_str,nullptr,16); }
     catch (const std::invalid_argument &) {
@@ -47,28 +40,39 @@ void set_addr(const string &addr_str,unsigned &addr) {
 }
 
 uint64_t get_recovery_dtbo_offset(){
-    number_of_pages pages(page_size);
-    return page_size * (1 + pages.get(kernel_size)
-                          + pages.get(ramdisk_size)
-                          + pages.get(second_size));
+    if (recovery_dtbo_size > 0){
+        number_of_pages pages(page_size);
+        return page_size * (1 + pages.get(kernel_size)
+                              + pages.get(ramdisk_size)
+                              + pages.get(second_size));
+    }else return 0;
+}
+
+void write(ofstream &writable,const char *content,const streamsize &size) {
+    writable.write(content,size);
+    pad_size = (page_size - (writable.tellp() & (page_size - 1))) & (page_size - 1);
+    pad.resize(pad_size);
+    writable.write(pad.data(),pad_size);
 }
 
 void read_file(const path &path,const string &what,uint32_t &size,vector<char> &buffer) {
-    print::inf("Reading "+what+" file...");
-    size = file_size(path);
-    if (size == 0) {
-        print::err("This file is empty.");
-        exit(1);
-    }
-    ifstream file(path,ios::binary);
-    if (!file.is_open()) {
-        print::err("Failed to open this "+what+" file.");
-        exit(1);
-    }
-    buffer.resize(size);
-    if (!file.read(buffer.data(),size)) {
-        print::err("Failed to read this "+what+" file.");
-        exit(1);
+    if (exists(path)){
+        print::inf("Reading "+what+" file...");
+        size = file_size(path);
+        if (size == 0) {
+            print::err("This file is empty.");
+            exit(1);
+        }
+        ifstream file(path,ios::binary);
+        if (!file.is_open()) {
+            print::err("Failed to open this "+what+" file.");
+            exit(1);
+        }
+        buffer.resize(size);
+        if (!file.read(buffer.data(),size)) {
+            print::err("Failed to read this "+what+" file.");
+            exit(1);
+        }
     }
 }
 
@@ -80,39 +84,23 @@ namespace hdr {
             exit(1);
         }
 
+        set_addr(args.get<string>("--start-addr"),base_addr);
+
         kernel_path = args.get<string>("--kernel");
-        if (kernel_path.empty()) {
-            print::err("Path to kernel file must be specified.");
-            exit(1);
-        }
-        if (!exists(kernel_path)) {
-            print::err("Invalid kernel file path.");
-            exit(1);
-        }
+        if (!kernel_path.empty()) {
+            if (!exists(kernel_path)){
+                print::err("Invalid kernel file path.");
+                exit(1);
+            }else set_addr(args.get<string>("--kernel-addr"), kernel_addr);
+        }else print::wrn("Kernel will not be added to boot.");
 
         ramdisk_path = args.get<string>("--ramdisk");
-        if (ramdisk_path.empty()) {
-            print::err("Path to ramdisk file must be specified.");
-            exit(1);
-        }
-        if (!exists(ramdisk_path)) {
-            print::err("Invalid ramdisk file path.");
-            exit(1);
-        }
-
-        print::inf("Calculating OS version value...");
-        os_version_ = args.get<vector<uint32_t>>("--os-version");
-        if (os_version_.size() < 3) {
-            print::err("Please, specify major, minor and patch integers in OS version argument.");
-            exit(1);
-        }
-        os_patch_level_ = args.get<vector<uint32_t>>("--os-patch-level");
-        if (os_patch_level_.size() < 2) {
-            print::err("Please, specify year and month integers in OS patch level argument.");
-            exit(1);
-        }
-        set_os_version(os_version,os_version_[0],os_version_[1],os_version_[2]);
-        set_os_patch_level(os_version,os_patch_level_[0],os_patch_level_[1]);
+        if (!ramdisk_path.empty()) {
+            if (!exists(ramdisk_path)){
+                print::err("Invalid ramdisk file path.");
+                exit(1);
+            }else set_addr(args.get<string>("--ramdisk-addr"),ramdisk_addr);
+        }else print::wrn("Initramfs will not be added to boot.");
 
         name = args.get<string>("--name");
         name_size = name.size();
@@ -134,11 +122,21 @@ namespace hdr {
             }
         }
 
-        base_addr = 0x0;
-        set_addr(args.get<string>("--start-addr"),base_addr);
-        set_addr(args.get<string>("--tags-addr"),tags_addr);
-        set_addr(args.get<string>("--kernel-addr"), kernel_addr);
-        set_addr(args.get<string>("--ramdisk-addr"),ramdisk_addr);
+        print::inf("Calculating OS version value...");
+        os_version_ = args.get<vector<uint32_t>>("--os-version");
+        if (os_version_.size() < 3) {
+            print::err("Please, specify major, minor and patch integers in OS version argument.");
+            exit(1);
+        }
+        os_patch_level_ = args.get<vector<uint32_t>>("--os-patch-level");
+        if (os_patch_level_.size() < 2) {
+            print::err("Please, specify year and month integers in OS patch level argument.");
+            exit(1);
+        }
+        set_os_version(os_version,os_version_[0],os_version_[1],os_version_[2]);
+        set_os_patch_level(os_version,os_patch_level_[0],os_patch_level_[1]);
+
+        set_addr(args.get<string>("--tags-addr"),tags_addr); // idk what it belongs to
     }
 //// Check stage
     void cv0(const ArgumentParser &args) {
@@ -165,7 +163,7 @@ namespace hdr {
     }
     void rv0() {
         rd_base();
-        if (!second_path.empty()) read_file(second_path,"second",second_size,second_data);
+        read_file(second_path,"second",second_size,second_data);
     }
 //// Open stage
     void ov0() {
@@ -217,7 +215,7 @@ namespace hdr {
 //// Read stage
     void rv1() {
         rv0();
-        if (!recovery_dtbo_path.empty()) read_file(recovery_dtbo_path,"recovery DTBO",recovery_dtbo_size,recovery_dtbo_data);
+        read_file(recovery_dtbo_path,"recovery DTBO",recovery_dtbo_size,recovery_dtbo_data);
     }
 //// Open stage 
     void ov1() {
