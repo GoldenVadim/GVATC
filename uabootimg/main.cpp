@@ -16,6 +16,8 @@ using argparse::ArgumentParser,std::invalid_argument,std::exception,std::to_stri
       std::vector,std::pair,std::unordered_map,
       std::ifstream,std::ofstream,std::ios,std::streamsize;
 
+ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
+ifstream image;
 uint32_t kernel_size,    ramdisk_size,  dtb_size, vendor_ramdisk_size, second_size, header_size, recovery_dtbo_size,
          kernel_addr,    ramdisk_addr,      tags_addr,          second_addr,
          name_size,      cmdline_size,  extra_cmdline_size, vendor_cmdline_size,
@@ -24,11 +26,11 @@ uint32_t kernel_size,    ramdisk_size,  dtb_size, vendor_ramdisk_size, second_si
          header_version, page_size,       os_version_patch_level, os_version, os_patch_level;
 uint64_t dtb_addr, recovery_dtbo_offset;
 pair<array<uint32_t,3>,array<uint32_t,2>> decoded_os_version;
-string   name,           cmdline,       extra_cmdline,      vendor_cmdline, args;// sha
-path              image_path, directory_output_path;
+string                     name,           cmdline,       extra_cmdline,      vendor_cmdline, args;// sha
+path                       image_path, directory_output_path;
 vector<char>      image_data, buffer, cmdline_data;
 streamsize        image_size;
-array<char,BOOT_NAME_SIZE>    name_data;
+array<char,BOOT_NAME_SIZE>       name_data;
 array<char,BOOT_EXTRA_ARGS_SIZE> extra_cmdline_data; 
 //array<char,32> sha_data;
 array<uint32_t,9> kernel_ramdisk_second_info;
@@ -91,7 +93,7 @@ namespace hdr {
         //print::inf("* SHA checksum: "+        sha);
         print::inf("* Additional cmdline: "+  extra_cmdline);
     }
-    void brhdr0(ifstream &image){
+    void brhdr0(){
         kernel_size  = kernel_ramdisk_second_info[0];
         kernel_addr  = kernel_ramdisk_second_info[1];
         ramdisk_size = kernel_ramdisk_second_info[2];
@@ -127,8 +129,8 @@ namespace hdr {
         print::inf("* Recovery DTBO offset: "+ss.ss.str());
         print::inf("* Header size: "+         to_string(header_size));
     }
-    void brhdr1(ifstream &image){
-        brhdr0(image);
+    void brhdr1(){
+        brhdr0();
         image.read(reinterpret_cast<char*>(&recovery_dtbo_size),4);
         image.read(reinterpret_cast<char*>(&recovery_dtbo_offset),8);
         //header_size = BOOT_IMAGE_HEADER_V1_SIZE;
@@ -145,8 +147,8 @@ namespace hdr {
         ss.hexize(dtb_addr);
         print::inf("* DTB load address: "+          ss.ss.str());
     }
-    void brhdr2(ifstream &image){
-        brhdr1(image);
+    void brhdr2(){
+        brhdr1();
         image.read(reinterpret_cast<char*>(&dtb_size),4);
         image.read(reinterpret_cast<char*>(&dtb_addr),8);
     }
@@ -163,7 +165,7 @@ namespace hdr {
         o_hdr();
         o_cmdline();
     }
-    void brhdr3(ifstream &image){
+    void brhdr3(){
         kernel_size = kernel_ramdisk_second_info[0];
         ramdisk_size = kernel_ramdisk_second_info[1];
         os_version_patch_level = kernel_ramdisk_second_info[2];
@@ -176,16 +178,16 @@ namespace hdr {
     void behdr3(){
         e_base();
     }
-    constexpr array<void(*)(ifstream&),4> brhdrs = {hdr::brhdr0,hdr::brhdr1,hdr::brhdr2,hdr::brhdr3,};
     using nortrnfnc = array<void(*)(),4>;
-    constexpr nortrnfnc                   bohdrs = {hdr::bohdr0,hdr::bohdr1,hdr::bohdr2,hdr::bohdr3,};
-    //constexpr nortrnfnc                   boahdr = {hdr::boahdr0,hdr::boahdr1,hdr::boahdr2,hdr::boahdr3,};
-    constexpr nortrnfnc                   behdrs = {hdr::behdr0,hdr::behdr1,hdr::behdr2,hdr::behdr3,};
-    void bhdr(ifstream &image,const ArgumentParser &args){
+    constexpr nortrnfnc brhdrs = {hdr::brhdr0,hdr::brhdr1,hdr::brhdr2,hdr::brhdr3,};
+    constexpr nortrnfnc bohdrs = {hdr::bohdr0,hdr::bohdr1,hdr::bohdr2,hdr::bohdr3,};
+    //constexpr nortrnfnc boahdr = {hdr::boahdr0,hdr::boahdr1,hdr::boahdr2,hdr::boahdr3,};
+    constexpr nortrnfnc behdrs = {hdr::behdr0,hdr::behdr1,hdr::behdr2,hdr::behdr3,};
+    void bhdr(){
         image_data.resize(image_size);
         image.read(reinterpret_cast<char*>(kernel_ramdisk_second_info.data()),36);
-        brhdrs[kernel_ramdisk_second_info[8]](image);
-        if (!args.get<bool>("--quiet")){
+        brhdrs[kernel_ramdisk_second_info[8]]();
+        if (!parser.get<bool>("--quiet")){
             bohdrs[kernel_ramdisk_second_info[8]]();
             //boahdr[kernel_ramdisk_second_info[8]]();
         }
@@ -193,7 +195,6 @@ namespace hdr {
 }
 
 int main(const int argc, const char **argv) {
-    ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
     parser.add_description(GVATC_TOOL_NAME" - The lightweight and fast tool to unpack Android bootable images.");
     parser.add_epilog("Tool to unpack Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
                       "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
@@ -246,7 +247,7 @@ int main(const int argc, const char **argv) {
             print::err("This file is empty.");
             return 1;
         }
-        ifstream image(image_path,ios::binary);
+        image.open(image_path,ios::binary);
         if (!image.is_open()) {
             print::err("Failed to open this file.");
             return 1;
@@ -256,7 +257,7 @@ int main(const int argc, const char **argv) {
         image.read(image_data.data(),BOOT_MAGIC_SIZE);
         magic = string_view(image_data.data(),BOOT_MAGIC_SIZE);
         if (magic==BOOT_MAGIC){
-            hdr::bhdr(image,parser);
+            hdr::bhdr();
             if (!directory_output_path.empty()){
                 hdr::behdrs[kernel_ramdisk_second_info[8]]();
                 create_directories(directory_output_path);
