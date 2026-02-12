@@ -10,14 +10,15 @@
 #include "../libgvatc/abootimg/pages.hpp"
 #include "bootimg.h"
 
-using std::exception,std::function,std::stoi,std::hex,std::to_string,
+using std::exception,std::stoi,std::hex,std::to_string,
       std::array,std::vector,std::pair,std::find,std::memset,std::memcpy,
       std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
       std::ifstream,std::ofstream,std::ios,std::streamsize,
       argparse::ArgumentParser,std::invalid_argument;
 
-constexpr array<uint32_t,4> header_versions = {0,1,2,3,};
-constexpr array<uint32_t,4> page_sizes = {2048,4096,8192,16384};
+ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
+constexpr array<unsigned char,4> header_versions = {0,1,2,3,};
+constexpr array<unsigned short,4> page_sizes = {2048,4096,8192,16384};
 
 path         boot_output_path, vendor_boot_output_path,
              kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path, recovery_dtbo_path, second_path;
@@ -77,39 +78,39 @@ void read_file(const path &path,const string &what,uint32_t &size,vector<char> &
 }
 
 namespace hdr {
-    void bt_chck(const ArgumentParser &args) {
-        boot_output_path = args.get<string>("--boot-output");
+    void bt_chck() {
+        boot_output_path = parser.get<string>("--boot-output");
         if (boot_output_path.empty()) {
             print::err("'boot' file output path must be specified.");
             exit(1);
         }
 
-        set_addr(args.get<string>("--start-addr"),base_addr);
+        set_addr(parser.get<string>("--start-addr"),base_addr);
 
-        kernel_path = args.get<string>("--kernel");
+        kernel_path = parser.get<string>("--kernel");
         if (!kernel_path.empty()) {
             if (!exists(kernel_path)){
                 print::err("Invalid kernel file path.");
                 exit(1);
-            }else set_addr(args.get<string>("--kernel-addr"), kernel_addr);
+            }else set_addr(parser.get<string>("--kernel-addr"), kernel_addr);
         }else print::wrn("Kernel will not be added to boot.");
 
-        ramdisk_path = args.get<string>("--ramdisk");
+        ramdisk_path = parser.get<string>("--ramdisk");
         if (!ramdisk_path.empty()) {
             if (!exists(ramdisk_path)){
                 print::err("Invalid ramdisk file path.");
                 exit(1);
-            }else set_addr(args.get<string>("--ramdisk-addr"),ramdisk_addr);
+            }else set_addr(parser.get<string>("--ramdisk-addr"),ramdisk_addr);
         }else print::wrn("Initramfs will not be added to boot.");
 
-        name = args.get<string>("--name");
+        name = parser.get<string>("--name");
         name_size = name.size();
         if (name_size > BOOT_NAME_SIZE) {
             print::err("Length of name of product cannot be bigger than 16 characters.");
             exit(1);
         }
 
-        cmdline = args.get<string>("--cmdline");
+        cmdline = parser.get<string>("--cmdline");
         cmdline_size = cmdline.size();
         if (!cmdline.empty()) {
             if (header_version < 3 && cmdline_size > BOOT_ARGS_SIZE) {
@@ -123,12 +124,12 @@ namespace hdr {
         }
 
         print::inf("Calculating OS version value...");
-        os_version_ = args.get<vector<uint32_t>>("--os-version");
+        os_version_ = parser.get<vector<uint32_t>>("--os-version");
         if (os_version_.size() < 3) {
             print::err("Please, specify major, minor and patch integers in OS version argument.");
             exit(1);
         }
-        os_patch_level_ = args.get<vector<uint32_t>>("--os-patch-level");
+        os_patch_level_ = parser.get<vector<uint32_t>>("--os-patch-level");
         if (os_patch_level_.size() < 2) {
             print::err("Please, specify year and month integers in OS patch level argument.");
             exit(1);
@@ -136,24 +137,24 @@ namespace hdr {
         set_os_version(os_version,os_version_[0],os_version_[1],os_version_[2]);
         set_os_patch_level(os_version,os_patch_level_[0],os_patch_level_[1]);
 
-        set_addr(args.get<string>("--tags-addr"),tags_addr); // idk what it belongs to
+        set_addr(parser.get<string>("--tags-addr"),tags_addr); // idk what it belongs to
     }
 //// Check stage
-    void cv0(const ArgumentParser &args) {
-        page_size = args.get<uint32_t>("--page-size");
+    void cv0() {
+        page_size = parser.get<uint32_t>("--page-size");
         if (find(page_sizes.begin(),page_sizes.end(),page_size) == page_sizes.end()) {
             print::err("Invalid or unsupported page size. Only 2048, 4096, 8192, 16384 are available.");
             exit(1);
         }
-        bt_chck(args);
-        extra_cmdline = args.get<string>("--extra-cmdline");
+        bt_chck();
+        extra_cmdline = parser.get<string>("--extra-cmdline");
         extra_cmdline_size = extra_cmdline.size();
-        second_path = args.get<string>("--second");
+        second_path = parser.get<string>("--second");
         if (!second_path.empty()){
             if (!exists(second_path)){
                 print::err("Invalid second bootloader file path.");
                 exit(1);
-            } else set_addr(args.get<string>("--second-addr"),second_addr);
+            } else set_addr(parser.get<string>("--second-addr"),second_addr);
         } 
     }
 //// Read stage
@@ -204,9 +205,9 @@ namespace hdr {
         return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
     }
 //// Check stage
-    void cv1(const ArgumentParser &args) {
-        cv0(args);
-        recovery_dtbo_path = args.get<string>("--recovery-dtbo");
+    void cv1() {
+        cv0();
+        recovery_dtbo_path = parser.get<string>("--recovery-dtbo");
         if (!recovery_dtbo_path.empty() && !exists(recovery_dtbo_path)) {
             print::err("Invalid recovery DTBO file path.");
             exit(1);
@@ -252,8 +253,8 @@ namespace hdr {
         return {reinterpret_cast<const char*>(&boot_img_hdr),BOOT_IMAGE_HEADER_V1_SIZE};
     }
 //// Check stage
-    void v234_dtb_chck(const ArgumentParser &args) {
-        dtb_path = args.get<string>("--dtb");
+    void v234_dtb_chck() {
+        dtb_path = parser.get<string>("--dtb");
         if (dtb_path.empty()) {
             print::err("Path to DTB file must not be empty.");
             exit(1);
@@ -262,11 +263,11 @@ namespace hdr {
             print::err("Invalid DTB file path.");
             exit(1);
         }
-        dtb_addr = stoi(args.get("--dtb-addr"),nullptr,16); // cant use set_addr
+        dtb_addr = stoi(parser.get("--dtb-addr"),nullptr,16); // cant use set_addr
     }
-    void cv2(const ArgumentParser &args) {
-        cv1(args);
-        v234_dtb_chck(args);
+    void cv2() {
+        cv1();
+        v234_dtb_chck();
     }
 //// Read stage
     void v234_rd_dtb() {
@@ -315,16 +316,16 @@ namespace hdr {
         boot_img_hdr.dtb_addr = dtb_addr;
         return {reinterpret_cast<const char*>(&boot_img_hdr),BOOT_IMAGE_HEADER_V2_SIZE};
     }
-    void vbt_chck(const ArgumentParser &args) {
+    void vbt_chck() {
         page_size = BOOT_IMAGE_HEADER_V34_PAGESIZE;
 
-        vendor_boot_output_path = args.get<string>("--vendor-boot-output");
+        vendor_boot_output_path = parser.get<string>("--vendor-boot-output");
         if (vendor_boot_output_path.empty()) {
             print::err("'vendor_boot' file output path must not be empty.");
             exit(1);
         }
 
-        vendor_ramdisk_path = args.get<string>("--vendor-ramdisk");
+        vendor_ramdisk_path = parser.get<string>("--vendor-ramdisk");
         if (vendor_ramdisk_path.empty()) {
             print::err("Vendor specific ramdisk must be specified.");
             exit(1);
@@ -334,9 +335,9 @@ namespace hdr {
             exit(1);
         }
 
-        v234_dtb_chck(args);
+        v234_dtb_chck();
 
-        vendor_cmdline = args.get<string>("--vendor-cmdline");
+        vendor_cmdline = parser.get<string>("--vendor-cmdline");
         vendor_cmdline_size = vendor_cmdline.size();
 
         if (vendor_cmdline_size > VENDOR_BOOT_ARGS_SIZE) {
@@ -345,9 +346,9 @@ namespace hdr {
         }
     }
 //// Check stage
-    void cv3(const ArgumentParser &args) {
-        vbt_chck(args);
-        bt_chck(args);
+    void cv3() {
+        vbt_chck();
+        bt_chck();
     }
 //// Read stage
     void rv3() {
@@ -377,7 +378,7 @@ namespace hdr {
         // vendor_boot
         wvboot(writables[1]);
     }
-    pair<const char*,size_t> vhdr(const function<pair<const char*,size_t>()> &vhdr){ // looks studip but ok
+    pair<const char*,size_t> vhdr(pair<const char*,size_t>(*const vhdr)()){ // looks studip but ok
         print::inf("Building 'vendor_boot' header...");
         return vhdr();
     }
@@ -418,14 +419,13 @@ namespace hdr {
 }
 
 constexpr array<pair<const char*,std::size_t>(*)(),4> bldhdrs = {hdr::v0, hdr::v1, hdr::v2, hdr::v3};
-constexpr array<void(*)(const ArgumentParser&),4> chckhdrs = {hdr::cv0, hdr::cv1, hdr::cv2, hdr::cv3};
 using nortrnfnc = array<void(*)(),4>;
-constexpr nortrnfnc rdhdrs = {hdr::rv0,hdr::rv1,hdr::rv2,hdr::rv3,};
-constexpr nortrnfnc opnfls = {hdr::ov0,hdr::ov1,hdr::ov2,hdr::ov3,};
-constexpr nortrnfnc wrthdrs = {hdr::wv0,hdr::wv1,hdr::wv2,hdr::wv3,};
+constexpr nortrnfnc chckhdrs = {hdr::cv0, hdr::cv1, hdr::cv2, hdr::cv3,};
+constexpr nortrnfnc rdhdrs   = {hdr::rv0, hdr::rv1, hdr::rv2, hdr::rv3,};
+constexpr nortrnfnc opnfls   = {hdr::ov0, hdr::ov1, hdr::ov2, hdr::ov3,};
+constexpr nortrnfnc wrthdrs  = {hdr::wv0, hdr::wv1, hdr::wv2, hdr::wv3,};
 
 int main(const int argc, char* const argv[]){
-    ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
     parser.add_description(GVATC_TOOL_NAME" - The lightweight and fast tool to generate Android bootable images.");
     parser.add_epilog("Tool to create Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
                       "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
@@ -538,7 +538,7 @@ int main(const int argc, char* const argv[]){
         }
         print::inf("Header version: "+to_string(header_version));
 
-        chckhdrs[header_version](parser);
+        chckhdrs[header_version]();
 
         print::inf("Reading required files...");
         rdhdrs[header_version]();
