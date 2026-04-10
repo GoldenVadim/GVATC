@@ -23,13 +23,13 @@ constexpr array<unsigned short,4> page_sizes = {2048,4096,8192,16384};
 path         boot_output_path, vendor_boot_output_path,
              kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path, recovery_dtbo_path, second_path;
 vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, recovery_dtbo_data, second_data, pad;
-uint32_t     kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size, recovery_dtbo_size, second_size,
+unsigned int kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size, recovery_dtbo_size, second_size,
              kernel_addr,      ramdisk_addr,            tags_addr,           /*ramdisk_addr,*/   recovery_dtbo_addr, second_addr, base_addr,
              name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size,
              header_version,   page_size,               os_version;         uint64_t dtb_addr; streamsize pad_size;//unsigned char id[EVP_MAX_MD_SIZE];
 string       name,             cmdline,                 extra_cmdline,      vendor_cmdline,      action;
 pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
-vector<uint32_t>             os_version_,  os_patch_level_;
+vector<unsigned int>         os_version_,  os_patch_level_;
 vector<ofstream>             writables;
 
 void set_addr(const string &addr_str,unsigned &addr) {

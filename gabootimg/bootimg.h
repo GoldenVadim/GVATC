@@ -29,7 +29,7 @@
 
 #pragma once
 
-#include <cstdint> // GoldenVadim: instead of stdint.h
+//#include <cstdint> // GoldenVadim: instead of stdint.h; deprecated
 
 #define BOOT_MAGIC "ANDROID!"
 #define BOOT_MAGIC_SIZE 8
@@ -50,7 +50,7 @@
 #define VENDOR_RAMDISK_TABLE_ENTRY_BOARD_ID_SIZE 16
 
 // Additional macros added by GoldenVadim
-#define v34_BOOT_ARGS_SIZE BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE
+#define v34_BOOT_ARGS_SIZE (BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE)
 #define BOOT_IMAGE_HEADER_V34_PAGESIZE 4096
 #define BOOT_IMAGE_HEADER_V1_SIZE 1648
 #define BOOT_IMAGE_HEADER_V2_SIZE 1660

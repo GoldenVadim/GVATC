@@ -18,14 +18,14 @@ using argparse::ArgumentParser,std::invalid_argument,std::exception,std::to_stri
 
 ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
 ifstream image;
-uint32_t kernel_size,    ramdisk_size,  dtb_size, vendor_ramdisk_size, second_size, header_size, recovery_dtbo_size,
-         kernel_addr,    ramdisk_addr,      tags_addr,          second_addr,
-         name_size,      cmdline_size,  extra_cmdline_size, vendor_cmdline_size,
-         kernel_pages,   ramdisk_pages,   second_pages,  recovery_dtbo_pages,
-         kernel_offset,  ramdisk_offset,  second_offset, dtb_offset,
-         header_version, page_size,       os_version_patch_level, os_version, os_patch_level;
-uint64_t dtb_addr, recovery_dtbo_offset;
-pair<array<uint32_t,3>,array<uint32_t,2>> decoded_os_version;
+unsigned int kernel_size,    ramdisk_size,   dtb_size, vendor_ramdisk_size, second_size, header_size, recovery_dtbo_size,
+             kernel_addr,    ramdisk_addr,      tags_addr,          second_addr,
+             name_size,      cmdline_size,   extra_cmdline_size, vendor_cmdline_size,
+             kernel_pages,   ramdisk_pages,  second_pages,  recovery_dtbo_pages,
+             kernel_offset,  ramdisk_offset, second_offset, dtb_offset,
+             header_version, page_size,      os_version_patch_level, os_version, os_patch_level;
+unsigned long long dtb_addr, recovery_dtbo_offset;
+pair<array<unsigned int,3>,array<unsigned int,2>> decoded_os_version;
 string                     name,           cmdline,       extra_cmdline,      vendor_cmdline, args;// sha
 path                       image_path, directory_output_path;
 vector<char>      image_data, buffer, cmdline_data;
@@ -33,14 +33,14 @@ streamsize        image_size;
 array<char,BOOT_NAME_SIZE>       name_data;
 array<char,BOOT_EXTRA_ARGS_SIZE> extra_cmdline_data; 
 //array<char,32> sha_data;
-array<uint32_t,9> kernel_ramdisk_second_info;
+array<unsigned,9> kernel_ramdisk_second_info;
 unordered_map<string,pair<unsigned,unsigned>> unpack_targets;
 ss_necessary_manipulations ss; string_view magic; number_of_pages pages(page_size);
 
 void decode_os_version(){
     os_version = os_version_patch_level >> 11;
     os_patch_level = os_version_patch_level & ((1<<11) - 1);
-    decoded_os_version = pair<array<uint32_t,3>,array<uint32_t,2>>
+    decoded_os_version = pair<array<unsigned,3>,array<unsigned,2>>
                          {get_os_version(os_version),get_os_patch_level(os_patch_level)};
 }
 

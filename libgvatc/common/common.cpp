@@ -1,6 +1,8 @@
 #include <iostream>
-#include <cstdint>
 #include <iomanip>
+#if defined(_WIN32)
+#define NOMINMAX
+#endif
 #include <termcolor/termcolor.hpp>
 #include "print.hpp"
 #include "other.hpp"
@@ -21,13 +23,13 @@ namespace print {
     }
 }
 
-void ss_necessary_manipulations::hexize(int dec){
+void ss_necessary_manipulations::hexize(unsigned long long dec){
     ss.str("");
     ss.clear();
     ss << "0x" << hex << dec;
 }
 
-string ss_necessary_manipulations::os_pl(const uint32_t &y,const uint32_t &m){
+string ss_necessary_manipulations::os_pl(const unsigned int &y,const unsigned int &m){
     ss.str("");
     ss.clear();
     if (y >= 2000 && m > 0) ss << dec << setw(4) << setfill('0') << y << '-' << setw(2) << setfill('0') << m;
