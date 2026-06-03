@@ -1,8 +1,8 @@
 #define GVATC_TOOL_NAME "gabootimg (G.A.'bootimg')"
 
 #include <fstream>
-#include <cstring>
 //#include <openssl/evp.h>
+#include <algorithm>
 #include <argparse/argparse.hpp>
 #include "../gvatc.hpp"
 #include "../libgvatc/common/print.hpp"
@@ -11,7 +11,7 @@
 #include "bootimg.h"
 
 using std::exception,std::stoi,std::hex,std::to_string,
-      std::array,std::vector,std::pair,std::find,std::memset,std::memcpy,
+      std::array,std::vector,std::pair,std::find,std::ranges::fill,std::ranges::fill_n,
       std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
       std::ifstream,std::ofstream,std::ios,std::streamsize,
       argparse::ArgumentParser,std::invalid_argument;
@@ -184,7 +184,7 @@ namespace hdr {
     }
     pair<const char*,size_t> v0() {
         static boot_img_hdr_v0 boot_img_hdr;
-        memcpy(boot_img_hdr.magic,BOOT_MAGIC,BOOT_MAGIC_SIZE);
+        fill_n()
         boot_img_hdr.kernel_size = kernel_size;
         boot_img_hdr.kernel_addr = kernel_addr;
         boot_img_hdr.ramdisk_size = ramdisk_size;
@@ -195,7 +195,7 @@ namespace hdr {
         boot_img_hdr.page_size = page_size;
         boot_img_hdr.header_version = header_version;
         boot_img_hdr.os_version = os_version;
-        memset(boot_img_hdr.name,0,BOOT_NAME_SIZE);
+        fill(boot_img_hdr.name,0,BOOT_NAME_SIZE);
         memcpy(boot_img_hdr.name,name.c_str(),name_size);
         memset(boot_img_hdr.cmdline, 0,BOOT_ARGS_SIZE);
         memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
@@ -457,7 +457,7 @@ int main(const int argc, char* const argv[]){
     .metavar("<DTB>")
     .default_value("");
     parser.add_argument("--recovery-dtbo")
-    .help("Add optional recovery DTBO to 'boot'. Only for 1 & 2 header versions. The offset (or load address) of it will be calculated")
+    .help("Add optional recovery DTBO to 'boot'. Only for 1 & 2 header versions. The load address offset of it will be calculated")
     .metavar("<DTBO>")
     .default_value("");
     parser.add_argument("-i","--vendor-ramdisk")

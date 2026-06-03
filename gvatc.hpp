@@ -1,1 +1,1 @@
-extern const char GVATC_VERSION[11];
+extern const char *const GVATC_VERSION;
