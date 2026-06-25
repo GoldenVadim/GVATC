@@ -4,12 +4,12 @@
 #include <string_view>
 #include <unordered_map>
 #include <argparse/argparse.hpp>
-#include "../gvatc.hpp"
+#include "../libgvatc/gvatc.hpp"
 #include "../libgvatc/common/print.hpp"
 #include "../libgvatc/common/other.hpp"
 #include "../libgvatc/abootimg/pages.hpp"
 #include "../libgvatc/abootimg/os_ver_get.hpp"
-#include "../gabootimg/bootimg.h"
+#include "../libgvatc/abootimg/bootimg.h"
 
 using argparse::ArgumentParser,std::invalid_argument,std::exception,std::to_string,std::string_view,
       std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,std::filesystem::create_directories,

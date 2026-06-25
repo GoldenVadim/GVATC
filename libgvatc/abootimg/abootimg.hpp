@@ -26,37 +26,32 @@
  * (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE OF THIS
  * SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
  */
-
 #pragma once
+//#include <stdint.h> GoldenVadim: remove C-style
 #define BOOT_MAGIC "ANDROID!"
 #define BOOT_MAGIC_SIZE 8
 #define BOOT_NAME_SIZE 16
 #define BOOT_ARGS_SIZE 512
 #define BOOT_EXTRA_ARGS_SIZE 1024
-
 #define VENDOR_BOOT_MAGIC "VNDRBOOT"
 #define VENDOR_BOOT_MAGIC_SIZE 8
 #define VENDOR_BOOT_ARGS_SIZE 2048
 #define VENDOR_BOOT_NAME_SIZE 16
-
 #define VENDOR_RAMDISK_TYPE_NONE 0
 #define VENDOR_RAMDISK_TYPE_PLATFORM 1
 #define VENDOR_RAMDISK_TYPE_RECOVERY 2
 #define VENDOR_RAMDISK_TYPE_DLKM 3
 #define VENDOR_RAMDISK_NAME_SIZE 32
 #define VENDOR_RAMDISK_TABLE_ENTRY_BOARD_ID_SIZE 16
-
-// Additional macros added by GoldenVadim
-#define v34_BOOT_ARGS_SIZE (BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE)
-#define BOOT_IMAGE_HEADER_V34_PAGESIZE 4096
+// GoldenVadim: add additional macros
 #define BOOT_IMAGE_HEADER_V1_SIZE 1648
 #define BOOT_IMAGE_HEADER_V2_SIZE 1660
 #define BOOT_IMAGE_HEADER_V3_SIZE 1580
 #define BOOT_IMAGE_HEADER_V4_SIZE 1584
+#define BOOT_IMAGE_V4_SIGNATURE_SIZE 4096
 #define VENDOR_BOOT_IMAGE_HEADER_V3_SIZE 2112
 #define VENDOR_BOOT_IMAGE_HEADER_V4_SIZE 2128
-/////////////////////////////////////////
-
+#define v34_BOOT_ARGS_SIZE (BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE)
 /* When a boot header is of version 0, the structure of boot image is as
  * follows:
  *
@@ -85,52 +80,39 @@
  * 6. if second_size != 0: jump to second_addr
  *    else: jump to kernel_addr
  */
+// GoldenVadim: remove 'os-version' generation functions from structs
 struct boot_img_hdr_v0 {
     // Must be BOOT_MAGIC.
-    uint8_t magic[BOOT_MAGIC_SIZE];
-
-    uint32_t kernel_size; /* size in bytes */
-    uint32_t kernel_addr; /* physical load addr */
-
-    uint32_t ramdisk_size; /* size in bytes */
-    uint32_t ramdisk_addr; /* physical load addr */
-
-    uint32_t second_size; /* size in bytes */
-    uint32_t second_addr; /* physical load addr */
-
-    uint32_t tags_addr; /* physical addr for kernel tags (if required) */
-    uint32_t page_size; /* flash page size we assume */
-
+    char magic[BOOT_MAGIC_SIZE];
+    unsigned kernel_size; /* size in bytes */
+    unsigned kernel_addr; /* physical load addr */
+    unsigned ramdisk_size; /* size in bytes */
+    unsigned ramdisk_addr; /* physical load addr */
+    unsigned second_size; /* size in bytes */
+    unsigned second_addr; /* physical load addr */
+    unsigned tags_addr; /* physical addr for kernel tags (if required) */
+    unsigned page_size; /* flash page size we assume */
     // Version of the boot image header.
-    uint32_t header_version;
-
+    unsigned header_version;
     // Operating system version and security patch level.
     // For version "A.B.C" and patch level "Y-M-D":
     //   (7 bits for each of A, B, C; 7 bits for (Y-2000), 4 bits for M)
     //   os_version = A[31:25] B[24:18] C[17:11] (Y-2000)[10:4] M[3:0]
-    uint32_t os_version;
+    unsigned os_version;
 
-    // GoldenVadim's patch: SetOsVersion and SetOsPatchLevel are moved to main.cpp
-
-    uint8_t name[BOOT_NAME_SIZE]; /* asciiz product name */
-
-    uint8_t cmdline[BOOT_ARGS_SIZE]; /* asciiz kernel commandline */
-
-    uint32_t id[8]; /* timestamp / checksum / sha1 / etc */
-
+    char name[BOOT_NAME_SIZE]; /* asciiz product name */
+    unsigned char cmdline[BOOT_ARGS_SIZE]; /* asciiz kernel commandline */
+    unsigned id[8]; /* timestamp / checksum / sha1 / etc */
     // Supplemental command line data; kept here to maintain
     // binary compatibility with older versions of mkbootimg.
     // Asciiz.
-    uint8_t extra_cmdline[BOOT_EXTRA_ARGS_SIZE];
+    unsigned char extra_cmdline[BOOT_EXTRA_ARGS_SIZE];
 } __attribute__((packed));
-
 /*
  * It is expected that callers would explicitly specify which version of the
  * boot image header they need to use.
  */
-// GoldenVadim's patch: There is no selected by default header structure.
 //typedef struct boot_img_hdr_v0 boot_img_hdr;
-
 /* When a boot header is of version 1, the structure of boot image is as
  * follows:
  *
@@ -166,11 +148,10 @@ struct boot_img_hdr_v0 {
  *    else: jump to kernel_addr
  */
 struct boot_img_hdr_v1 : public boot_img_hdr_v0 {
-    uint32_t recovery_dtbo_size;   /* size in bytes for recovery DTBO/ACPIO image */
-    uint64_t recovery_dtbo_offset; /* offset to recovery dtbo/acpio in boot image */
-    uint32_t header_size;
+    unsigned recovery_dtbo_size;   /* size in bytes for recovery DTBO/ACPIO image */
+    unsigned long long recovery_dtbo_offset; /* offset to recovery dtbo/acpio in boot image */
+    unsigned header_size;
 } __attribute__((packed));
-
 /* When the boot image header has a version of 2, the structure of the boot
  * image is as follows:
  *
@@ -187,7 +168,6 @@ struct boot_img_hdr_v1 : public boot_img_hdr_v0 {
  * +---------------------+
  * | dtb                 | q pages
  * +---------------------+
-
  * n = (kernel_size + page_size - 1) / page_size
  * m = (ramdisk_size + page_size - 1) / page_size
  * o = (second_size + page_size - 1) / page_size
@@ -209,11 +189,9 @@ struct boot_img_hdr_v1 : public boot_img_hdr_v0 {
  *    else: jump to kernel_addr
  */
 struct boot_img_hdr_v2 : public boot_img_hdr_v1 {
-    uint32_t dtb_size; /* size in bytes for DTB image */
-    uint64_t dtb_addr; /* physical load address for DTB image */
+    unsigned dtb_size; /* size in bytes for DTB image */
+    unsigned long long dtb_addr; /* physical load address for DTB image */
 } __attribute__((packed));
-
-
 /* When the boot image header has a version of 3, the structure of the boot
  * image is as follows:
  *
@@ -240,7 +218,6 @@ struct boot_img_hdr_v2 : public boot_img_hdr_v1 {
  * +---------------------+
  * | dtb                 | q pages
  * +---------------------+
-
  * o = (2112 + page_size - 1) / page_size
  * p = (vendor_ramdisk_size + page_size - 1) / page_size
  * q = (dtb_size + page_size - 1) / page_size
@@ -261,55 +238,38 @@ struct boot_img_hdr_v2 : public boot_img_hdr_v1 {
  */
 struct boot_img_hdr_v3 {
     // Must be BOOT_MAGIC.
-    uint8_t magic[BOOT_MAGIC_SIZE];
-
-    uint32_t kernel_size; /* size in bytes */
-    uint32_t ramdisk_size; /* size in bytes */
-
+    unsigned char magic[BOOT_MAGIC_SIZE];
+    unsigned kernel_size; /* size in bytes */
+    unsigned ramdisk_size; /* size in bytes */
     // Operating system version and security patch level.
     // For version "A.B.C" and patch level "Y-M-D":
     //   (7 bits for each of A, B, C; 7 bits for (Y-2000), 4 bits for M)
     //   os_version = A[31:25] B[24:18] C[17:11] (Y-2000)[10:4] M[3:0]
-    uint32_t os_version;
+    unsigned os_version;
 
-    // 105 line
-
-    uint32_t header_size;
-
-    uint32_t reserved[4];
-
+    unsigned header_size;
+    unsigned reserved[4];
     // Version of the boot image header.
-    uint32_t header_version;
-
+    unsigned header_version;
     // Asciiz kernel commandline.
-    uint8_t cmdline[v34_BOOT_ARGS_SIZE];
+    unsigned char cmdline[BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE];
 } __attribute__((packed));
-
 struct vendor_boot_img_hdr_v3 {
     // Must be VENDOR_BOOT_MAGIC.
-    uint8_t magic[VENDOR_BOOT_MAGIC_SIZE];
-
+    unsigned char magic[VENDOR_BOOT_MAGIC_SIZE];
     // Version of the vendor boot image header.
-    uint32_t header_version;
-
-    uint32_t page_size; /* flash page size we assume */
-
-    uint32_t kernel_addr; /* physical load addr */
-    uint32_t ramdisk_addr; /* physical load addr */
-
-    uint32_t vendor_ramdisk_size; /* size in bytes */
-
-    uint8_t cmdline[VENDOR_BOOT_ARGS_SIZE]; /* asciiz kernel commandline */
-
-    uint32_t tags_addr; /* physical addr for kernel tags (if required) */
-    uint8_t name[VENDOR_BOOT_NAME_SIZE]; /* asciiz product name */
-
-    uint32_t header_size;
-
-    uint32_t dtb_size; /* size in bytes for DTB image */
-    uint64_t dtb_addr; /* physical load address for DTB image */
+    unsigned header_version;
+    unsigned page_size; /* flash page size we assume */
+    unsigned kernel_addr; /* physical load addr */
+    unsigned ramdisk_addr; /* physical load addr */
+    unsigned vendor_ramdisk_size; /* size in bytes */
+    unsigned char cmdline[VENDOR_BOOT_ARGS_SIZE]; /* asciiz kernel commandline */
+    unsigned tags_addr; /* physical addr for kernel tags (if required) */
+    unsigned char name[VENDOR_BOOT_NAME_SIZE]; /* asciiz product name */
+    unsigned header_size;
+    unsigned dtb_size; /* size in bytes for DTB image */
+    unsigned long long dtb_addr; /* physical load address for DTB image */
 } __attribute__((packed));
-
 /* When the boot image header has a version of 4, the structure of the boot
  * image is as follows:
  *
@@ -400,23 +360,20 @@ struct vendor_boot_img_hdr_v3 {
  *    jump to kernel_addr
  */
 struct boot_img_hdr_v4 : public boot_img_hdr_v3 {
-    uint32_t signature_size; /* size in bytes */
+    unsigned signature_size; /* size in bytes */
 } __attribute__((packed));
-
 struct vendor_boot_img_hdr_v4 : public vendor_boot_img_hdr_v3 {
-    uint32_t vendor_ramdisk_table_size; /* size in bytes for the vendor ramdisk table */
-    uint32_t vendor_ramdisk_table_entry_num; /* number of entries in the vendor ramdisk table */
-    uint32_t vendor_ramdisk_table_entry_size; /* size in bytes for a vendor ramdisk table entry */
-    uint32_t bootconfig_size; /* size in bytes for the bootconfig section */
+    unsigned vendor_ramdisk_table_size; /* size in bytes for the vendor ramdisk table */
+    unsigned vendor_ramdisk_table_entry_num; /* number of entries in the vendor ramdisk table */
+    unsigned vendor_ramdisk_table_entry_size; /* size in bytes for a vendor ramdisk table entry */
+    unsigned bootconfig_size; /* size in bytes for the bootconfig section */
 } __attribute__((packed));
-
 struct vendor_ramdisk_table_entry_v4 {
-    uint32_t ramdisk_size; /* size in bytes for the ramdisk image */
-    uint32_t ramdisk_offset; /* offset to the ramdisk image in vendor ramdisk section */
-    uint32_t ramdisk_type; /* type of the ramdisk */
-    uint8_t ramdisk_name[VENDOR_RAMDISK_NAME_SIZE]; /* asciiz ramdisk name */
-
+    unsigned ramdisk_size; /* size in bytes for the ramdisk image */
+    unsigned ramdisk_offset; /* offset to the ramdisk image in vendor ramdisk section */
+    unsigned ramdisk_type; /* type of the ramdisk */
+    unsigned char ramdisk_name[VENDOR_RAMDISK_NAME_SIZE]; /* asciiz ramdisk name */
     // Hardware identifiers describing the board, soc or platform which this
     // ramdisk is intended to be loaded on.
-    uint32_t board_id[VENDOR_RAMDISK_TABLE_ENTRY_BOARD_ID_SIZE];
+    unsigned board_id[VENDOR_RAMDISK_TABLE_ENTRY_BOARD_ID_SIZE];
 } __attribute__((packed));

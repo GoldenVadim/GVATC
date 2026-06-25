@@ -1,19 +1,19 @@
-#define GVATC_TOOL_NAME "gabootimg (G.A.'bootimg')"
+#define GVATC_TOOL_NAME "cabootimg (C.A.'bootimg') [Create Android 'bootimg']"
 
 #include <fstream>
 //#include <openssl/evp.h>
 #include <algorithm>
 #include <argparse/argparse.hpp>
-#include "../gvatc.hpp"
+#include "../libgvatc/gvatc.hpp"
 #include "../libgvatc/common/print.hpp"
 #include "../libgvatc/abootimg/os_ver_set.hpp"
 #include "../libgvatc/abootimg/pages.hpp"
-#include "bootimg.h"
+#include "../libgvatc/abootimg/abootimg.hpp"
 
-using std::exception,std::stoi,std::hex,std::to_string,
-      std::array,std::vector,std::pair,std::find,std::ranges::fill,std::ranges::fill_n,
-      std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
+using std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
+      std::array,std::vector,std::pair,std::find,std::fill_n,
       std::ifstream,std::ofstream,std::ios,std::streamsize,
+      std::exception,std::stoi,std::hex,std::to_string,
       argparse::ArgumentParser,std::invalid_argument;
 
 ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
@@ -26,7 +26,7 @@ vector<char> kernel_data,      ramdisk_data,            dtb_data,           vend
 unsigned int kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size, recovery_dtbo_size, second_size,
              kernel_addr,      ramdisk_addr,            tags_addr,           /*ramdisk_addr,*/   recovery_dtbo_addr, second_addr, base_addr,
              name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size,
-             header_version,   page_size,               os_version;         uint64_t dtb_addr; streamsize pad_size;//unsigned char id[EVP_MAX_MD_SIZE];
+             header_version,   page_size,               os_version;         unsigned long long dtb_addr; streamsize pad_size;//unsigned char id[EVP_MAX_MD_SIZE];
 string       name,             cmdline,                 extra_cmdline,      vendor_cmdline,      action;
 pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
 vector<unsigned int>         os_version_,  os_patch_level_;
@@ -40,7 +40,7 @@ void set_addr(const string &addr_str,unsigned &addr) {
     }
 }
 
-uint64_t get_recovery_dtbo_offset(){
+unsigned long long get_recovery_dtbo_offset(){
     if (recovery_dtbo_size > 0){
         number_of_pages pages(page_size);
         return page_size * (1 + pages.get(kernel_size)
@@ -56,7 +56,7 @@ void write(ofstream &writable,const char *content,const streamsize &size) {
     writable.write(pad.data(),pad_size);
 }
 
-void read_file(const path &path,const string &what,uint32_t &size,vector<char> &buffer) {
+void read_file(const path &path,const string &what,unsigned &size,vector<char> &buffer) {
     if (exists(path)){
         print::inf("Reading "+what+" file...");
         size = file_size(path);
@@ -124,12 +124,12 @@ namespace hdr {
         }
 
         print::inf("Calculating OS version value...");
-        os_version_ = parser.get<vector<uint32_t>>("--os-version");
+        os_version_ = parser.get<vector<unsigned>>("--os-version");
         if (os_version_.size() < 3) {
             print::err("Please, specify major, minor and patch integers in OS version argument.");
             exit(1);
         }
-        os_patch_level_ = parser.get<vector<uint32_t>>("--os-patch-level");
+        os_patch_level_ = parser.get<vector<unsigned>>("--os-patch-level");
         if (os_patch_level_.size() < 2) {
             print::err("Please, specify year and month integers in OS patch level argument.");
             exit(1);
@@ -141,7 +141,7 @@ namespace hdr {
     }
 //// Check stage
     void cv0() {
-        page_size = parser.get<uint32_t>("--page-size");
+        page_size = parser.get<unsigned>("--page-size");
         if (find(page_sizes.begin(),page_sizes.end(),page_size) == page_sizes.end()) {
             print::err("Invalid or unsupported page size. Only 2048, 4096, 8192, 16384 are available.");
             exit(1);
@@ -183,26 +183,27 @@ namespace hdr {
         write(writables[0],second_data.data(),second_size);
     }
     pair<const char*,size_t> v0() {
-        static boot_img_hdr_v0 boot_img_hdr;
-        fill_n()
-        boot_img_hdr.kernel_size = kernel_size;
-        boot_img_hdr.kernel_addr = kernel_addr;
-        boot_img_hdr.ramdisk_size = ramdisk_size;
-        boot_img_hdr.ramdisk_addr = ramdisk_addr;
-        boot_img_hdr.second_size = second_size;
-        boot_img_hdr.second_addr = second_addr;
-        boot_img_hdr.tags_addr = tags_addr;
-        boot_img_hdr.page_size = page_size;
-        boot_img_hdr.header_version = header_version;
-        boot_img_hdr.os_version = os_version;
-        fill(boot_img_hdr.name,0,BOOT_NAME_SIZE);
-        memcpy(boot_img_hdr.name,name.c_str(),name_size);
-        memset(boot_img_hdr.cmdline, 0,BOOT_ARGS_SIZE);
-        memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
+        static boot_img_hdr_v0 v0;
+        //fill_n(&(v0.magic),BOOT_MAGIC_SIZE,BOOT_MAGIC);
+        fill_n(v0.magic,BOOT_MAGIC_SIZE,&BOOT_MAGIC);
+        v0.kernel_size = kernel_size;
+        v0.kernel_addr = kernel_addr;
+        v0.ramdisk_size = ramdisk_size;
+        v0.ramdisk_addr = ramdisk_addr;
+        v0.second_size = second_size;
+        v0.second_addr = second_addr;
+        v0.tags_addr = tags_addr;
+        v0.page_size = page_size;
+        v0.header_version = header_version;
+        v0.os_version = os_version;
+        fill_n(v0.name,BOOT_NAME_SIZE,0);
+        fill_n(v0.name,name_size,name.c_str());
+        fill_n(v0.cmdline,BOOT_ARGS_SIZE,0);
+        fill_n(v0.cmdline,cmdline_size,cmdline.c_str());
         // boot_img_hdr.id
-        memset(boot_img_hdr.extra_cmdline,0,BOOT_EXTRA_ARGS_SIZE);
-        memcpy(boot_img_hdr.extra_cmdline,extra_cmdline.c_str(),extra_cmdline_size);
-        return {reinterpret_cast<const char*>(&boot_img_hdr),sizeof(boot_img_hdr)};
+        fill_n(v0.extra_cmdline,BOOT_EXTRA_ARGS_SIZE,0);
+        fill_n(v0.extra_cmdline,extra_cmdline_size,extra_cmdline.c_str());
+        return {reinterpret_cast<const char*>(&v0),sizeof(v0)};
     }
 //// Check stage
     void cv1() {
@@ -228,29 +229,29 @@ namespace hdr {
         write(writables[0],recovery_dtbo_data.data(),recovery_dtbo_size);
     }
     pair<const char*,size_t> v1() {
-        static boot_img_hdr_v1 boot_img_hdr;
-        memcpy(boot_img_hdr.magic,BOOT_MAGIC,BOOT_MAGIC_SIZE);
-        boot_img_hdr.kernel_size = kernel_size;
-        boot_img_hdr.kernel_addr = kernel_addr;
-        boot_img_hdr.ramdisk_size = ramdisk_size;
-        boot_img_hdr.ramdisk_addr = ramdisk_addr;
-        boot_img_hdr.second_size = second_size;
-        boot_img_hdr.second_addr = second_addr;
-        boot_img_hdr.tags_addr = tags_addr;
-        boot_img_hdr.page_size = page_size;
-        boot_img_hdr.header_version = header_version;
-        boot_img_hdr.os_version = os_version;
-        memset(boot_img_hdr.name,0,BOOT_NAME_SIZE);
-        memcpy(boot_img_hdr.name,name.c_str(),name_size);
-        memset(boot_img_hdr.cmdline,0,BOOT_ARGS_SIZE);
-        memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
+        static boot_img_hdr_v1 v1;
+        fill_n(v1.magic,BOOT_MAGIC_SIZE,BOOT_MAGIC);
+        v1.kernel_size = kernel_size;
+        v1.kernel_addr = kernel_addr;
+        v1.ramdisk_size = ramdisk_size;
+        v1.ramdisk_addr = ramdisk_addr;
+        v1.second_size = second_size;
+        v1.second_addr = second_addr;
+        v1.tags_addr = tags_addr;
+        v1.page_size = page_size;
+        v1.header_version = header_version;
+        v1.os_version = os_version;
+        fill_n(v1.name,BOOT_NAME_SIZE,0);
+        fill_n(v1.name,name_size,name.c_str());
+        fill_n(v1.cmdline,BOOT_ARGS_SIZE,0);
+        fill_n(v1.cmdline,cmdline_size,cmdline.c_str());
         //boot_img_hdr.id = id;
-        memset(boot_img_hdr.extra_cmdline,0,BOOT_EXTRA_ARGS_SIZE);
-        memcpy(boot_img_hdr.extra_cmdline,extra_cmdline.c_str(),extra_cmdline_size);
-        boot_img_hdr.recovery_dtbo_size = recovery_dtbo_size;
-        boot_img_hdr.recovery_dtbo_offset = get_recovery_dtbo_offset();
-        boot_img_hdr.header_size = BOOT_IMAGE_HEADER_V1_SIZE;
-        return {reinterpret_cast<const char*>(&boot_img_hdr),BOOT_IMAGE_HEADER_V1_SIZE};
+        fill_n(v1.extra_cmdline,BOOT_EXTRA_ARGS_SIZE,0);
+        fill_n(v1.extra_cmdline,extra_cmdline_size,extra_cmdline.c_str());
+        v1.recovery_dtbo_size = recovery_dtbo_size;
+        v1.recovery_dtbo_offset = get_recovery_dtbo_offset();
+        v1.header_size = BOOT_IMAGE_HEADER_V1_SIZE;
+        return {reinterpret_cast<const char*>(&v1),BOOT_IMAGE_HEADER_V1_SIZE};
     }
 //// Check stage
     void v234_dtb_chck() {
@@ -290,34 +291,34 @@ namespace hdr {
         v234_wrt_dtb(writables[0]);
     }
     pair<const char*,size_t> v2() {
-        static boot_img_hdr_v2 boot_img_hdr;
-        memcpy(boot_img_hdr.magic,BOOT_MAGIC,BOOT_MAGIC_SIZE);
-        boot_img_hdr.kernel_size = kernel_size;
-        boot_img_hdr.kernel_addr = kernel_addr;
-        boot_img_hdr.ramdisk_size = ramdisk_size;
-        boot_img_hdr.ramdisk_addr = ramdisk_addr;
-        boot_img_hdr.second_size = second_size;
-        boot_img_hdr.second_addr = second_addr;
-        boot_img_hdr.tags_addr = tags_addr;
-        boot_img_hdr.page_size = page_size;
-        boot_img_hdr.header_version = header_version;
-        boot_img_hdr.os_version = os_version;
-        memset(boot_img_hdr.name,0,BOOT_NAME_SIZE);
-        memcpy(boot_img_hdr.name,name.c_str(),name_size);
-        memset(boot_img_hdr.cmdline, 0,BOOT_ARGS_SIZE);
-        memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
+        static boot_img_hdr_v2 v2;
+        fill_n(v2.magic,BOOT_MAGIC_SIZE,BOOT_MAGIC);
+        v2.kernel_size = kernel_size;
+        v2.kernel_addr = kernel_addr;
+        v2.ramdisk_size = ramdisk_size;
+        v2.ramdisk_addr = ramdisk_addr;
+        v2.second_size = second_size;
+        v2.second_addr = second_addr;
+        v2.tags_addr = tags_addr;
+        v2.page_size = page_size;
+        v2.header_version = header_version;
+        v2.os_version = os_version;
+        fill_n(v2.name,BOOT_NAME_SIZE,0);
+        fill_n(v2.name,name_size,name.c_str());
+        fill_n(v2.cmdline,BOOT_ARGS_SIZE,0);
+        fill_n(v2.cmdline,cmdline_size,cmdline.c_str());
         //boot_img_hdr.id = id;
-        memset(boot_img_hdr.extra_cmdline, 0,BOOT_EXTRA_ARGS_SIZE);
-        memcpy(boot_img_hdr.extra_cmdline,extra_cmdline.c_str(),extra_cmdline_size);
-        boot_img_hdr.recovery_dtbo_size = recovery_dtbo_size;
-        boot_img_hdr.recovery_dtbo_offset = get_recovery_dtbo_offset();
-        boot_img_hdr.header_size = BOOT_IMAGE_HEADER_V2_SIZE;
-        boot_img_hdr.dtb_size = dtb_size;
-        boot_img_hdr.dtb_addr = dtb_addr;
-        return {reinterpret_cast<const char*>(&boot_img_hdr),BOOT_IMAGE_HEADER_V2_SIZE};
+        fill_n(v2.extra_cmdline,BOOT_EXTRA_ARGS_SIZE,0);
+        fill_n(v2.extra_cmdline,extra_cmdline_size,extra_cmdline.c_str());
+        v2.recovery_dtbo_size = recovery_dtbo_size;
+        v2.recovery_dtbo_offset = get_recovery_dtbo_offset();
+        v2.header_size = BOOT_IMAGE_HEADER_V2_SIZE;
+        v2.dtb_size = dtb_size;
+        v2.dtb_addr = dtb_addr;
+        return {reinterpret_cast<const char*>(&v2),BOOT_IMAGE_HEADER_V2_SIZE};
     }
     void vbt_chck() {
-        page_size = BOOT_IMAGE_HEADER_V34_PAGESIZE;
+        page_size = page_sizes[1];
 
         vendor_boot_output_path = parser.get<string>("--vendor-boot-output");
         if (vendor_boot_output_path.empty()) {
@@ -383,38 +384,38 @@ namespace hdr {
         return vhdr();
     }
     pair<const char*,size_t> vv3() {
-        static vendor_boot_img_hdr_v3 boot_img_hdr;
-        memcpy(boot_img_hdr.magic,VENDOR_BOOT_MAGIC,VENDOR_BOOT_MAGIC_SIZE);
-        boot_img_hdr.header_version = header_version;
-        boot_img_hdr.page_size = page_size;
-        boot_img_hdr.kernel_addr = kernel_addr;
-        boot_img_hdr.ramdisk_addr = ramdisk_addr;
-        boot_img_hdr.vendor_ramdisk_size = vendor_ramdisk_size;
-        memset(boot_img_hdr.cmdline, 0,BOOT_ARGS_SIZE);
-        memcpy(boot_img_hdr.cmdline,vendor_cmdline.c_str(),vendor_cmdline_size);
+        static vendor_boot_img_hdr_v3 vv3;
+        fill_n(vv3.magic,VENDOR_BOOT_MAGIC_SIZE,VENDOR_BOOT_MAGIC);
+        vv3.header_version = header_version;
+        vv3.page_size = page_size;
+        vv3.kernel_addr = kernel_addr;
+        vv3.ramdisk_addr = ramdisk_addr;
+        vv3.vendor_ramdisk_size = vendor_ramdisk_size;
+        fill_n(vv3.cmdline,BOOT_ARGS_SIZE,0);
+        fill_n(vv3.cmdline,vendor_cmdline_size,vendor_cmdline.c_str());
         //boot_img_hdr.id = id;
-        boot_img_hdr.tags_addr = tags_addr;
-        memset(boot_img_hdr.name,0,BOOT_NAME_SIZE);
-        memcpy(boot_img_hdr.name,name.c_str(),name_size);
-        boot_img_hdr.header_size = VENDOR_BOOT_IMAGE_HEADER_V3_SIZE;
-        boot_img_hdr.dtb_size = dtb_size;
-        boot_img_hdr.dtb_addr = dtb_addr;
-        return {reinterpret_cast<const char*>(&boot_img_hdr),VENDOR_BOOT_IMAGE_HEADER_V3_SIZE};
+        vv3.tags_addr = tags_addr;
+        fill_n(vv3.name,BOOT_NAME_SIZE,0);
+        fill_n(vv3.name,name_size,name.c_str());
+        vv3.header_size = VENDOR_BOOT_IMAGE_HEADER_V3_SIZE;
+        vv3.dtb_size = dtb_size;
+        vv3.dtb_addr = dtb_addr;
+        return {reinterpret_cast<const char*>(&vv3),VENDOR_BOOT_IMAGE_HEADER_V3_SIZE};
     }
     pair<const char*,size_t> v3() {
         vendor_boot_img_hdr = vhdr(vv3);
 
-        static boot_img_hdr_v3 boot_img_hdr;
-        memcpy(boot_img_hdr.magic,BOOT_MAGIC,BOOT_MAGIC_SIZE);
-        boot_img_hdr.kernel_size = kernel_size;
-        boot_img_hdr.ramdisk_size = ramdisk_size;
-        boot_img_hdr.os_version = os_version;
-        boot_img_hdr.header_size = BOOT_IMAGE_HEADER_V3_SIZE;
-        memset(boot_img_hdr.reserved,0,16);
-        boot_img_hdr.header_version = header_version;
-        memset(boot_img_hdr.cmdline,0,v34_BOOT_ARGS_SIZE);
-        memcpy(boot_img_hdr.cmdline,cmdline.c_str(),cmdline_size);
-        return {reinterpret_cast<const char*>(&boot_img_hdr),BOOT_IMAGE_HEADER_V3_SIZE};
+        static boot_img_hdr_v3 v3;
+        fill_n(v3.magic,32,BOOT_MAGIC);
+        v3.kernel_size = kernel_size;
+        v3.ramdisk_size = ramdisk_size;
+        v3.os_version = os_version;
+        v3.header_size = BOOT_IMAGE_HEADER_V3_SIZE;
+        fill_n(v3.reserved,16,0);
+        v3.header_version = header_version;
+        fill_n(v3.cmdline,v34_BOOT_ARGS_SIZE,0);
+        fill_n(v3.cmdline,cmdline_size,cmdline.c_str());
+        return {reinterpret_cast<const char*>(&v3),BOOT_IMAGE_HEADER_V3_SIZE};
     }
 }
 
@@ -426,103 +427,110 @@ constexpr nortrnfnc opnfls   = {hdr::ov0, hdr::ov1, hdr::ov2, hdr::ov3,};
 constexpr nortrnfnc wrthdrs  = {hdr::wv0, hdr::wv1, hdr::wv2, hdr::wv3,};
 
 int main(const int argc, char* const argv[]){
-    parser.add_description(GVATC_TOOL_NAME" - The lightweight and fast tool to generate Android bootable images.");
-    parser.add_epilog("Tool to create Android-specific 'boot' and 'vendor_boot' bootable images. Non-commercial use only!\n"
+    parser.add_description(GVATC_TOOL_NAME" - The lightweight and fast tool to create Android bootable images.");
+    parser.add_epilog("Tool to create Android-specific '*_boot' bootable images. Non-commercial use only!\n"
                       "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
 
     parser.add_argument("-H","--header-version")
-    .help("Specify the header version of Android bootable image(s)")
-    .metavar("<0/1/2/3/4>")
-    .scan<'i',unsigned>()
-    .required();
+        .help("Specify the header version of Android bootable image(s)")
+        .metavar("<0/1/2/3/4>")
+        .scan<'i',unsigned>()
+        .required();
     parser.add_argument("-p","--page-size")
-    .help("Specify the page size in Android bootable image. Note that page size in 3 & 4 header versions is fixed at 4096")
-    .metavar("<2048/4096/8192/16384>")
-    .scan<'i',unsigned>()
-    .required();
+        .help("Specify the page size in Android bootable image. Note that page size in 3 & 4 header versions is fixed at 4096")
+        .metavar("<2048/4096/8192/16384>")
+        .scan<'i',unsigned>()
+        .required();
     parser.add_argument("-k","--kernel")
-    .help("Add kernel (ACK/Linux) to Android 'boot'")
-    .metavar("<Image(.gz-dtb)>")
-    .default_value("");
+        .help("Add kernel (ACK/Linux) to Android 'boot'")
+        .metavar("<Image(.gz-dtb)>")
+        .default_value("");
     parser.add_argument("-s","--second")
-    .help("Add optional secondary bootloader to 'boot'. Only for header versions before 3")
-    .metavar("<...>")
-    .default_value("");
+        .help("Add optional secondary bootloader to 'boot'. Only for header versions before 3")
+        .metavar("<...>")
+        .default_value("");
     parser.add_argument("-r","--ramdisk")
-    .help("Add initial RAM filesystem image to Android 'boot'")
-    .metavar("<(Compressed) CPIO>")
-    .default_value("");
+        .help("Add initial RAM filesystem image to Android 'boot'")
+        .metavar("<(Compressed) CPIO>")
+        .default_value("");
     parser.add_argument("-d","--dtb")
-    .help("Add Device Tree Blob to Android 'boot' or 'vendor_boot'. DTB must be included in kernel file if using 0 header version")
-    .metavar("<DTB>")
-    .default_value("");
+        .help("Add Device Tree Blob to Android 'boot' or 'vendor_boot'. DTB must be included in kernel file if using 0 header version")
+        .metavar("<DTB>")
+        .default_value("");
     parser.add_argument("--recovery-dtbo")
-    .help("Add optional recovery DTBO to 'boot'. Only for 1 & 2 header versions. The load address offset of it will be calculated")
-    .metavar("<DTBO>")
-    .default_value("");
+        .help("Add optional recovery DTBO to 'boot'. Only for 1 & 2 header versions. The load address offset of it will be calculated")
+        .metavar("<DTBO>")
+        .default_value("");
     parser.add_argument("-i","--vendor-ramdisk")
-    .help("Add vendor's initial RAM filesystem image to 'vendor_boot' (3+ header version only)")
-    .metavar("<(Compressed) CPIO>")
-    .default_value("");
+        .help("Add vendor's initial RAM filesystem image to 'vendor_boot' (3+ header version only)")
+        .metavar("<(Compressed) CPIO>")
+        .default_value("");
     parser.add_argument("-B","--start-addr")
-    .help("Use load addresses arguments as offsets (-B + -K/R/D/t)")
-    .metavar("<0x0>")
-    .default_value("0x10000000");
+        .help("Use load addresses arguments as offsets (-B + -K/R/D/t)")
+        .metavar("<0x0>")
+        .default_value("0x10000000");
     parser.add_argument("-K","--kernel-addr")
-    .help("Set hexadecimal number of load address of kernel image")
-    .metavar("<0x0>")
-    .default_value("0x00008000");
+        .help("Set hexadecimal number of load address of kernel image")
+        .metavar("<0x0>")
+        .default_value("0x00008000");
     parser.add_argument("-R","--ramdisk-addr")
-    .help("Set hexadecimal number of load address of ramdisk(s) image(s)")
-    .metavar("<0x0>")
-    .default_value("0x01000000");
+        .help("Set hexadecimal number of load address of ramdisk(s) image(s)")
+        .metavar("<0x0>")
+        .default_value("0x01000000");
     parser.add_argument("-S","--second-addr")
-    .help("Set hexadecimal number of load address of second bootloader")
-    .metavar("<0x0>")
-    .default_value("0x00f00000");
+        .help("Set hexadecimal number of load address of second bootloader")
+        .metavar("<0x0>")
+        .default_value("0x00f00000");
     parser.add_argument("-D","--dtb-addr")
-    .help("Set hexadecimal number of load address of Device Tree Blob")
-    .metavar("<0x0>")
-    .default_value("0x01f00000");
+        .help("Set hexadecimal number of load address of Device Tree Blob")
+        .metavar("<0x0>")
+        .default_value("0x01f00000");
     parser.add_argument("-t","--tags-addr")
-    .help("Set hexadecimal number of load address of kernel's tags")
-    .metavar("<0x0>")
-    .default_value("0x00000100");
+        .help("Set hexadecimal number of load address of kernel's tags")
+        .metavar("<0x0>")
+        .default_value("0x00000100");
+    parser.add_argument("-f","--force-addr")
+        .help("Forcefully add load address of component even if that component is not added.")
+        .flag();
     parser.add_argument("-n","--name")
-    .help("Set name of product (board) in bootable image")
-    .metavar("<Redmi 5>")
-    .default_value("");
+        .help("Set name of product (board) in bootable image")
+        .metavar("<Redmi 5>")
+        .default_value("");
     parser.add_argument("-V","--os-version")
-    .help("Set version of operating system in bootable")
-    .metavar("<0.0.0>")
-    .nargs(3)
-    .scan<'i',unsigned>()
-    .default_value(vector<uint32_t>{0,0,0});
+        .help("Set version of operating system in bootable")
+        .metavar("<0.0.0>")
+        .nargs(3)
+        .scan<'i',unsigned>()
+        .default_value(vector<unsigned>{0,0,0});
     parser.add_argument("-P","--os-patch-level")
-    .help("Set patch level of operating system in bootable")
-    .metavar("<0000-00>")
-    .nargs(2)
-    .scan<'i',unsigned>()
-    .default_value(vector<uint32_t>{0,0});
+        .help("Set patch level of operating system in bootable")
+        .metavar("<0000-00>")
+        .nargs(2)
+        .scan<'i',unsigned>()
+        .default_value(vector<unsigned>{0,0});
     parser.add_argument("-c","--cmdline")
-    .help("Set command line of arguments that will be given to kernel")
-    .metavar("<console=tty0>")
-    .default_value("");
+        .help("Set command line of arguments that will be given to kernel")
+        .metavar("<console=tty0>")
+        .default_value("");
     parser.add_argument("-C","--vendor-cmdline")
-    .help("Set vendor's command line in 'vendor_boot' (3+ header version only)")
-    .metavar("<console=ttyMSM0>")
-    .default_value("");
+        .help("Set vendor's command line in 'vendor_boot' (3+ header version only)")
+        .metavar("<console=ttyMSM0>")
+        .default_value("");
     parser.add_argument("-l","--extra-cmdline")
-    .help("Set additional cmdline in 'boot'. Created for compatibility with older versions of mkbootimg. Not recommended to use. 0-2 header versions only")
-    .default_value("");
+        .help("Set additional cmdline in 'boot'. Created for compatibility with older versions of mkbootimg. Not recommended to use. 0-2 header versions only")
+        .default_value("");
     parser.add_argument("-O","--vendor-boot-output")
-    .help("Path to output of 'vendor_boot' bootable image file")
-    .metavar("<vendor_boot.img>")
-    .default_value("");
+        .help("Path to output of 'vendor_boot' bootable image file")
+        .metavar("<vendor_boot.img>")
+        .default_value("");
+    parser.add_argument("-I","--init-boot")
+        .help("Put RAM filesystem to separated 'init_boot' image. Only for devices, that have this memory partition.")
+        .metavar("<init_boot.img>")
+        .flag();
     parser.add_argument("-o","--boot-output")
-    .help("Relative or absolute output path of 'boot' image file")
-    .metavar("<boot.img>")
-    .required();
+        .help("Relative or absolute output path of 'boot' image file")
+        .metavar("<boot.img>")
+        .required();
     /*parser.add_argument("--print-id")
     .help("Print the generated ID (SHA1 checksum) of bootable")
     .flag();*/
@@ -543,14 +551,17 @@ int main(const int argc, char* const argv[]){
         print::inf("Reading required files...");
         rdhdrs[header_version]();
 
+        print::inf("Preparing output...");
+        opnfls[header_version]();
+
         print::inf("Building 'boot' header...");
         boot_img_hdr = bldhdrs[header_version]();
 
         print::inf("Writing data...");
-        opnfls[header_version]();
         wrthdrs[header_version]();
     }
     catch (const exception &err) {
+        print::err("Failed to create images.");
         print::err(err.what());
         return 1;
     }

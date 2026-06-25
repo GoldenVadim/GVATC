@@ -1,3 +1,3 @@
-#include "../gvatc.hpp"
+#include "gvatc.hpp"
 
-constexpr const char *const GVATC_VERSION = "2026.06.04";
+constexpr const char *const GVATC_VERSION = "2026.06.13";

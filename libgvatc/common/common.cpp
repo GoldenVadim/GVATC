@@ -3,23 +3,20 @@
 #if defined(_WIN32)
 #define NOMINMAX
 #endif
-#include <termcolor/termcolor.hpp>
 #include "print.hpp"
 #include "other.hpp"
 
-using termcolor::bright_red,termcolor::reset,termcolor::bright_yellow,
-      std::setfill,std::setw,
-      std::hex,std::dec;
+using std::setfill,std::setw,std::hex,std::dec;
 
 namespace print {
     void inf(const string &text) {
         std::cout << " (i)> |: " << text << std::endl;
     }
     void wrn(const string &text) {
-        std::cout << bright_yellow << " (!)> |: " << text << reset << std::endl;
+        std::cout << "\033[93" << " (!)> |: " << text << std::endl;
     }
     void err(const string &text) {
-        std::cerr << bright_red << " (X)> |: " << text << std::endl;
+        std::cerr << "\033[91" << " (X)> |: " << text << std::endl;
     }
 }
 
