@@ -9,7 +9,7 @@
 #include "../libgvatc/common/other.hpp"
 #include "../libgvatc/abootimg/pages.hpp"
 #include "../libgvatc/abootimg/os_ver_get.hpp"
-#include "../libgvatc/abootimg/bootimg.h"
+#include "../libgvatc/abootimg/abootimg.hpp"
 
 using argparse::ArgumentParser,std::invalid_argument,std::exception,std::to_string,std::string_view,
       std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,std::filesystem::create_directories,
@@ -170,7 +170,7 @@ namespace hdr {
         ramdisk_size = kernel_ramdisk_second_info[1];
         os_version_patch_level = kernel_ramdisk_second_info[2];
         decode_os_version();
-        page_size = BOOT_IMAGE_HEADER_V34_PAGESIZE;
+        page_size = 4096;
         cmdline_data.resize(v34_BOOT_ARGS_SIZE);
         image.read(cmdline_data.data(),v34_BOOT_ARGS_SIZE);
         cmdline = cmdline_data.data();

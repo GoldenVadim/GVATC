@@ -83,7 +83,7 @@
 // GoldenVadim: remove 'os-version' generation functions from structs
 struct boot_img_hdr_v0 {
     // Must be BOOT_MAGIC.
-    char magic[BOOT_MAGIC_SIZE];
+    const char magic[BOOT_MAGIC_SIZE] {'A','N','D','R','O','I','D','!'};
     unsigned kernel_size; /* size in bytes */
     unsigned kernel_addr; /* physical load addr */
     unsigned ramdisk_size; /* size in bytes */
@@ -107,7 +107,7 @@ struct boot_img_hdr_v0 {
     // binary compatibility with older versions of mkbootimg.
     // Asciiz.
     unsigned char extra_cmdline[BOOT_EXTRA_ARGS_SIZE];
-} __attribute__((packed));
+};
 /*
  * It is expected that callers would explicitly specify which version of the
  * boot image header they need to use.
@@ -151,7 +151,7 @@ struct boot_img_hdr_v1 : public boot_img_hdr_v0 {
     unsigned recovery_dtbo_size;   /* size in bytes for recovery DTBO/ACPIO image */
     unsigned long long recovery_dtbo_offset; /* offset to recovery dtbo/acpio in boot image */
     unsigned header_size;
-} __attribute__((packed));
+};
 /* When the boot image header has a version of 2, the structure of the boot
  * image is as follows:
  *
@@ -191,7 +191,7 @@ struct boot_img_hdr_v1 : public boot_img_hdr_v0 {
 struct boot_img_hdr_v2 : public boot_img_hdr_v1 {
     unsigned dtb_size; /* size in bytes for DTB image */
     unsigned long long dtb_addr; /* physical load address for DTB image */
-} __attribute__((packed));
+};
 /* When the boot image header has a version of 3, the structure of the boot
  * image is as follows:
  *
@@ -238,7 +238,7 @@ struct boot_img_hdr_v2 : public boot_img_hdr_v1 {
  */
 struct boot_img_hdr_v3 {
     // Must be BOOT_MAGIC.
-    unsigned char magic[BOOT_MAGIC_SIZE];
+    const char magic[BOOT_MAGIC_SIZE] {'A','N','D','R','O','I','D','!'};
     unsigned kernel_size; /* size in bytes */
     unsigned ramdisk_size; /* size in bytes */
     // Operating system version and security patch level.
@@ -253,10 +253,10 @@ struct boot_img_hdr_v3 {
     unsigned header_version;
     // Asciiz kernel commandline.
     unsigned char cmdline[BOOT_ARGS_SIZE + BOOT_EXTRA_ARGS_SIZE];
-} __attribute__((packed));
+};
 struct vendor_boot_img_hdr_v3 {
     // Must be VENDOR_BOOT_MAGIC.
-    unsigned char magic[VENDOR_BOOT_MAGIC_SIZE];
+    const char magic[VENDOR_BOOT_MAGIC_SIZE] {'V','N','D','R','B','O','O','T'};
     // Version of the vendor boot image header.
     unsigned header_version;
     unsigned page_size; /* flash page size we assume */
@@ -269,7 +269,7 @@ struct vendor_boot_img_hdr_v3 {
     unsigned header_size;
     unsigned dtb_size; /* size in bytes for DTB image */
     unsigned long long dtb_addr; /* physical load address for DTB image */
-} __attribute__((packed));
+};
 /* When the boot image header has a version of 4, the structure of the boot
  * image is as follows:
  *

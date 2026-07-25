@@ -1,7 +1,7 @@
 #define GVATC_TOOL_NAME "cabootimg (C.A.'bootimg') [Create Android 'bootimg']"
 
 #include <fstream>
-//#include <openssl/evp.h>
+#include <openssl/evp.h>
 #include <algorithm>
 #include <argparse/argparse.hpp>
 #include "../libgvatc/gvatc.hpp"
@@ -11,22 +11,23 @@
 #include "../libgvatc/abootimg/abootimg.hpp"
 
 using std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
-      std::array,std::vector,std::pair,std::find,std::fill_n,
+      std::vector,std::array,std::pair,std::find,std::fill_n,std::copy_n,
       std::ifstream,std::ofstream,std::ios,std::streamsize,
       std::exception,std::stoi,std::hex,std::to_string,
       argparse::ArgumentParser,std::invalid_argument;
 
 ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
-constexpr array<unsigned char,4> header_versions = {0,1,2,3,};
-constexpr array<unsigned short,4> page_sizes = {2048,4096,8192,16384};
+constexpr char header_versions[5] = {0,1,2,3,4};
+constexpr array<unsigned short, 4> page_sizes = {2048,4096,8192,16384};
 
 path         boot_output_path, vendor_boot_output_path,
              kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path, recovery_dtbo_path, second_path;
 vector<char> kernel_data,      ramdisk_data,            dtb_data,           vendor_ramdisk_data, recovery_dtbo_data, second_data, pad;
 unsigned int kernel_size,      ramdisk_size,            dtb_size,           vendor_ramdisk_size, recovery_dtbo_size, second_size,
              kernel_addr,      ramdisk_addr,            tags_addr,           /*ramdisk_addr,*/   recovery_dtbo_addr, second_addr, base_addr,
-             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size,
-             header_version,   page_size,               os_version;         unsigned long long dtb_addr; streamsize pad_size;//unsigned char id[EVP_MAX_MD_SIZE];
+             name_size,        cmdline_size,            extra_cmdline_size, vendor_cmdline_size;
+char         header_version; unsigned short             page_size; unsigned os_version;
+unsigned long long dtb_addr; streamsize pad_size; char id[EVP_MAX_MD_SIZE];
 string       name,             cmdline,                 extra_cmdline,      vendor_cmdline,      action;
 pair<const char*,streamsize> boot_img_hdr, vendor_boot_img_hdr;
 vector<unsigned int>         os_version_,  os_patch_level_;
@@ -184,8 +185,6 @@ namespace hdr {
     }
     pair<const char*,size_t> v0() {
         static boot_img_hdr_v0 v0;
-        //fill_n(&(v0.magic),BOOT_MAGIC_SIZE,BOOT_MAGIC);
-        fill_n(v0.magic,BOOT_MAGIC_SIZE,&BOOT_MAGIC);
         v0.kernel_size = kernel_size;
         v0.kernel_addr = kernel_addr;
         v0.ramdisk_size = ramdisk_size;
@@ -197,12 +196,12 @@ namespace hdr {
         v0.header_version = header_version;
         v0.os_version = os_version;
         fill_n(v0.name,BOOT_NAME_SIZE,0);
-        fill_n(v0.name,name_size,name.c_str());
+        copy_n(name.c_str(),name_size,v0.name);
         fill_n(v0.cmdline,BOOT_ARGS_SIZE,0);
-        fill_n(v0.cmdline,cmdline_size,cmdline.c_str());
+        copy_n(cmdline.c_str(),cmdline_size,v0.cmdline);
         // boot_img_hdr.id
         fill_n(v0.extra_cmdline,BOOT_EXTRA_ARGS_SIZE,0);
-        fill_n(v0.extra_cmdline,extra_cmdline_size,extra_cmdline.c_str());
+        copy_n(extra_cmdline.c_str(),extra_cmdline_size,v0.extra_cmdline);
         return {reinterpret_cast<const char*>(&v0),sizeof(v0)};
     }
 //// Check stage
@@ -230,7 +229,6 @@ namespace hdr {
     }
     pair<const char*,size_t> v1() {
         static boot_img_hdr_v1 v1;
-        fill_n(v1.magic,BOOT_MAGIC_SIZE,BOOT_MAGIC);
         v1.kernel_size = kernel_size;
         v1.kernel_addr = kernel_addr;
         v1.ramdisk_size = ramdisk_size;
@@ -242,12 +240,12 @@ namespace hdr {
         v1.header_version = header_version;
         v1.os_version = os_version;
         fill_n(v1.name,BOOT_NAME_SIZE,0);
-        fill_n(v1.name,name_size,name.c_str());
+        copy_n(name.c_str(),name_size,v1.name);
         fill_n(v1.cmdline,BOOT_ARGS_SIZE,0);
-        fill_n(v1.cmdline,cmdline_size,cmdline.c_str());
+        copy_n(cmdline.c_str(),cmdline_size,v1.cmdline);
         //boot_img_hdr.id = id;
         fill_n(v1.extra_cmdline,BOOT_EXTRA_ARGS_SIZE,0);
-        fill_n(v1.extra_cmdline,extra_cmdline_size,extra_cmdline.c_str());
+        copy_n(extra_cmdline.c_str(),extra_cmdline_size,v1.extra_cmdline);
         v1.recovery_dtbo_size = recovery_dtbo_size;
         v1.recovery_dtbo_offset = get_recovery_dtbo_offset();
         v1.header_size = BOOT_IMAGE_HEADER_V1_SIZE;
@@ -292,7 +290,6 @@ namespace hdr {
     }
     pair<const char*,size_t> v2() {
         static boot_img_hdr_v2 v2;
-        fill_n(v2.magic,BOOT_MAGIC_SIZE,BOOT_MAGIC);
         v2.kernel_size = kernel_size;
         v2.kernel_addr = kernel_addr;
         v2.ramdisk_size = ramdisk_size;
@@ -304,12 +301,12 @@ namespace hdr {
         v2.header_version = header_version;
         v2.os_version = os_version;
         fill_n(v2.name,BOOT_NAME_SIZE,0);
-        fill_n(v2.name,name_size,name.c_str());
+        copy_n(name.c_str(),name_size,v2.name);
         fill_n(v2.cmdline,BOOT_ARGS_SIZE,0);
-        fill_n(v2.cmdline,cmdline_size,cmdline.c_str());
+        copy_n(cmdline.c_str(),cmdline_size,v2.cmdline);
         //boot_img_hdr.id = id;
         fill_n(v2.extra_cmdline,BOOT_EXTRA_ARGS_SIZE,0);
-        fill_n(v2.extra_cmdline,extra_cmdline_size,extra_cmdline.c_str());
+        copy_n(extra_cmdline.c_str(),extra_cmdline_size,v2.extra_cmdline);
         v2.recovery_dtbo_size = recovery_dtbo_size;
         v2.recovery_dtbo_offset = get_recovery_dtbo_offset();
         v2.header_size = BOOT_IMAGE_HEADER_V2_SIZE;
@@ -328,7 +325,7 @@ namespace hdr {
 
         vendor_ramdisk_path = parser.get<string>("--vendor-ramdisk");
         if (vendor_ramdisk_path.empty()) {
-            print::err("Vendor specific ramdisk must be specified.");
+            print::err("Vendor's initial RAM disk image must be specified.");
             exit(1);
         }
         if (!exists(vendor_ramdisk_path)) {
@@ -385,18 +382,17 @@ namespace hdr {
     }
     pair<const char*,size_t> vv3() {
         static vendor_boot_img_hdr_v3 vv3;
-        fill_n(vv3.magic,VENDOR_BOOT_MAGIC_SIZE,VENDOR_BOOT_MAGIC);
         vv3.header_version = header_version;
         vv3.page_size = page_size;
         vv3.kernel_addr = kernel_addr;
         vv3.ramdisk_addr = ramdisk_addr;
         vv3.vendor_ramdisk_size = vendor_ramdisk_size;
         fill_n(vv3.cmdline,BOOT_ARGS_SIZE,0);
-        fill_n(vv3.cmdline,vendor_cmdline_size,vendor_cmdline.c_str());
+        copy_n(vendor_cmdline.c_str(),vendor_cmdline_size,vv3.cmdline);
         //boot_img_hdr.id = id;
         vv3.tags_addr = tags_addr;
         fill_n(vv3.name,BOOT_NAME_SIZE,0);
-        fill_n(vv3.name,name_size,name.c_str());
+        copy_n(name.c_str(),name_size,vv3.name);
         vv3.header_size = VENDOR_BOOT_IMAGE_HEADER_V3_SIZE;
         vv3.dtb_size = dtb_size;
         vv3.dtb_addr = dtb_addr;
@@ -406,15 +402,14 @@ namespace hdr {
         vendor_boot_img_hdr = vhdr(vv3);
 
         static boot_img_hdr_v3 v3;
-        fill_n(v3.magic,32,BOOT_MAGIC);
         v3.kernel_size = kernel_size;
         v3.ramdisk_size = ramdisk_size;
         v3.os_version = os_version;
         v3.header_size = BOOT_IMAGE_HEADER_V3_SIZE;
-        fill_n(v3.reserved,16,0);
+        fill_n(v3.reserved,4,0);
         v3.header_version = header_version;
         fill_n(v3.cmdline,v34_BOOT_ARGS_SIZE,0);
-        fill_n(v3.cmdline,cmdline_size,cmdline.c_str());
+        copy_n(cmdline.c_str(),cmdline_size,v3.cmdline);
         return {reinterpret_cast<const char*>(&v3),BOOT_IMAGE_HEADER_V3_SIZE};
     }
 }
@@ -540,8 +535,8 @@ int main(const int argc, char* const argv[]){
     
         print::inf("Checking arguments...");
         header_version = parser.get<unsigned>("--header-version");
-        if (header_version > header_versions.size()-1) {
-            print::err("Invalid header version. Only 0, 1, 2, 3 are available.");
+        if (header_version >= 5) {
+            print::err("Invalid header version. Only 0, 1, 2, 3 and 4 are available.");
             return 1;
         }
         print::inf("Header version: "+to_string(header_version));

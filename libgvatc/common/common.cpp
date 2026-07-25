@@ -10,13 +10,13 @@ using std::setfill,std::setw,std::hex,std::dec;
 
 namespace print {
     void inf(const string &text) {
-        std::cout << " (i)> |: " << text << std::endl;
+        std::cout << " [cabootimg] <i> |: " << text << std::endl;
     }
     void wrn(const string &text) {
-        std::cout << "\033[93" << " (!)> |: " << text << std::endl;
+        std::cout << "\033[33m" << " [cabootimg] <!> |: " << text << "\033[0m" << std::endl;
     }
     void err(const string &text) {
-        std::cerr << "\033[91" << " (X)> |: " << text << std::endl;
+        std::cerr << "\033[31m" << " [cabootimg] <X> |: " << text << "\033[0m" << std::endl;
     }
 }
 
