@@ -3,7 +3,7 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_EXTENSIONS OFF)
 project(GVATC)
 
-add_compile_options(-Wall -Wextra -Werror -funsigned-char -fno-signed-char)
+add_compile_options(-Wall -Wextra -Werror -funsigned-char -fno-signed-char -Wno-error=main)
 
 file(GLOB common libgvatc/common/*)
 file(GLOB abootimg libgvatc/abootimg/*)

@@ -1,3 +1,3 @@
 #include "gvatc.hpp"
 
-constexpr const char *const GVATC_VERSION = "2026.07.25";
+constexpr const char *const GVATC_VERSION = "2026.09.11";

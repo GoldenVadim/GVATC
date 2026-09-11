@@ -10,15 +10,14 @@
 #include "../libgvatc/abootimg/pages.hpp"
 #include "../libgvatc/abootimg/abootimg.hpp"
 
-using std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
+using argparse::ArgumentParser,argparse::default_arguments,std::invalid_argument,
+      std::filesystem::exists,std::filesystem::file_size,std::filesystem::path,
       std::vector,std::array,std::pair,std::find,std::fill_n,std::copy_n,
       std::ifstream,std::ofstream,std::ios,std::streamsize,
-      std::exception,std::stoi,std::hex,std::to_string,
-      argparse::ArgumentParser,std::invalid_argument;
+      std::exception,std::stoi,std::hex,std::to_string;
 
-ArgumentParser parser(GVATC_TOOL_NAME,GVATC_VERSION);
-constexpr char header_versions[5] = {0,1,2,3,4};
-constexpr array<unsigned short, 4> page_sizes = {2048,4096,8192,16384};
+static ArgumentParser parser(GVATC_TOOL_NAME, GVATC_VERSION, default_arguments::help);
+constexpr array<unsigned short, 4> page_sizes = {2048, 4096, 8192, 16384};
 
 path         boot_output_path, vendor_boot_output_path,
              kernel_path,      ramdisk_path,            dtb_path,           vendor_ramdisk_path, recovery_dtbo_path, second_path;
@@ -421,7 +420,7 @@ constexpr nortrnfnc rdhdrs   = {hdr::rv0, hdr::rv1, hdr::rv2, hdr::rv3,};
 constexpr nortrnfnc opnfls   = {hdr::ov0, hdr::ov1, hdr::ov2, hdr::ov3,};
 constexpr nortrnfnc wrthdrs  = {hdr::wv0, hdr::wv1, hdr::wv2, hdr::wv3,};
 
-int main(const int argc, char* const argv[]){
+int main(const unsigned argc, const char *const (&argv)[]){
     parser.add_description(GVATC_TOOL_NAME" - The lightweight and fast tool to create Android bootable images.");
     parser.add_epilog("Tool to create Android-specific '*_boot' bootable images. Non-commercial use only!\n"
                       "The part of GoldenVadim's Android Tools Collection. https://goldenvadim.github.io/GVATC");
